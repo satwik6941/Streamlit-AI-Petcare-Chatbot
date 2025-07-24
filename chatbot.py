@@ -2,7 +2,6 @@
 import google.generativeai as genai
 import os
 import dotenv as env
-import mimetypes
 
 # Load environment variables from .env file
 env.load_dotenv()
@@ -41,7 +40,7 @@ Important Guidelines:
 - Always end your final advice with: "If you feel this is a very serious issue, please consult a veterinarian for further assistance."
 """
     model = genai.GenerativeModel(
-        'gemini-1.5-pro-latest',  # Updated model to support multimodal inputs
+        'gemini-1.5-pro-latest',
         system_instruction=system_prompt
     )
     return model
@@ -50,7 +49,6 @@ def get_response(chat_history):
     """
     Gets a response from the generative AI model.
     `chat_history` is expected to be a list of dictionaries in the Gemini format.
-    e.g., [{{"role": "user", "parts": ["Hello", {{"mime_type": "image/jpeg", "data": ...}}]}}]
     """
     if not chat_history:
         return ""
@@ -67,20 +65,3 @@ def get_response(chat_history):
     except Exception as e:
         print(f"Error getting response from Gemini: {e}")
         return "Sorry, I encountered an error. Please try again."
-
-def prepare_file(file_data, file_name):
-    """
-    Prepares an uploaded file for the Gemini API.
-    Returns a dict with mime_type and data.
-    """
-    if file_data is None:
-        return None
-    
-    mime_type, _ = mimetypes.guess_type(file_name)
-    if mime_type is None:
-        mime_type = 'application/octet-stream'
-        
-    return {
-        "mime_type": mime_type,
-        "data": file_data
-    }

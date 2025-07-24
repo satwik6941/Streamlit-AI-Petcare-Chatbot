@@ -1,6 +1,7 @@
 import streamlit as st
 import chatbot
 import time
+import mimetypes
 
 def main():
     st.set_page_config(page_title="AI Petcare Assistant", page_icon="🐾")
@@ -80,8 +81,13 @@ def main():
                         parts.append(msg["content"])
                     if "files" in msg:
                         for file_info in msg["files"]:
-                            prepared_file = chatbot.prepare_file(file_info["data"], file_info["name"])
-                            parts.append(prepared_file)
+                            mime_type, _ = mimetypes.guess_type(file_info["name"])
+                            if mime_type is None:
+                                mime_type = 'application/octet-stream'
+                            parts.append({
+                                "mime_type": mime_type,
+                                "data": file_info["data"]
+                            })
                     if parts:
                         gemini_history.append({"role": role, "parts": parts})
 
@@ -94,7 +100,7 @@ def main():
                 message_placeholder.markdown(full_response)
             
             st.session_state.messages.append({"role": "assistant", "content": full_response})
-            st.rerun() # Rerun to clear the file uploader and input
+            st.rerun()
 
 if __name__ == "__main__":
     main()
