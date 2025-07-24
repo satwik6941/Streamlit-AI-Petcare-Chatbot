@@ -42,7 +42,7 @@ Important Guidelines:
 - Always end your final advice with: "If you feel this is a very serious issue, please consult a veterinarian for further assistance."
 """
     model = genai.GenerativeModel(
-        'gemini-2.5-flash',
+        'gemini-2.5-pro',
         system_instruction=system_prompt
     )
     return model

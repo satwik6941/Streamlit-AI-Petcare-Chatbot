@@ -149,10 +149,12 @@ def main():
         </style>
         """, unsafe_allow_html=True)
 
-        # Standard Streamlit chat input UI
-        uploaded_file = st.file_uploader("Upload an image or file", type=["png", "jpg", "jpeg", "gif", "bmp", "webp", "pdf", "txt"], key="file_upload")
-        prompt = st.text_input("Ask me anything about what you're learning...", key="prompt_input")
-        send_clicked = st.button("Send")
+        # --- Place chat input at the bottom ---
+        chat_input_placeholder = st.empty()
+        with chat_input_placeholder.container():
+            uploaded_file = st.file_uploader("Upload an image or file", type=["png", "jpg", "jpeg", "gif", "bmp", "webp", "pdf", "txt"], key="file_upload")
+            prompt = st.text_input("Ask me anything about what you're learning...", key="prompt_input")
+            send_clicked = st.button("Send")
 
         # Attach file only to this prompt, then clear
         if send_clicked and prompt:
@@ -173,7 +175,9 @@ def main():
             with st.spinner("Thinking..."):
                 response = chatbot.get_response(st.session_state.chat_history)
                 st.session_state.chat_history.append({"role": "model", "parts": [response]})
-                st.rerun()
+            # Clear prompt and file uploader after sending
+            chat_input_placeholder.empty()
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
