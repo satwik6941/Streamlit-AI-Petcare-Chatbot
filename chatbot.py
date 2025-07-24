@@ -2,8 +2,6 @@
 import google.generativeai as genai
 import os
 import dotenv as env
-from io import BytesIO
-from PIL import Image
 import mimetypes
 
 # Load environment variables from .env file
@@ -58,7 +56,6 @@ def get_response(chat_history):
         return ""
 
     model = get_model()
-    # The history for the model should not include the last user message
     model_history = chat_history[:-1]
     last_message_parts = chat_history[-1]["parts"]
 
@@ -71,25 +68,19 @@ def get_response(chat_history):
         print(f"Error getting response from Gemini: {e}")
         return "Sorry, I encountered an error. Please try again."
 
-def prepare_file(uploaded_file):
+def prepare_file(file_data, file_name):
     """
     Prepares an uploaded file for the Gemini API.
     Returns a dict with mime_type and data.
     """
-    if uploaded_file is None:
+    if file_data is None:
         return None
     
-    # Read the file bytes
-    bytes_data = uploaded_file.getvalue()
-    
-    # Guess the MIME type
-    mime_type, _ = mimetypes.guess_type(uploaded_file.name)
-    
-    # If MIME type can't be guessed, default to octet-stream
+    mime_type, _ = mimetypes.guess_type(file_name)
     if mime_type is None:
         mime_type = 'application/octet-stream'
         
     return {
         "mime_type": mime_type,
-        "data": bytes_data
+        "data": file_data
     }

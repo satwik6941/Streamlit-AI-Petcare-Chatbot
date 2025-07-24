@@ -1,18 +1,6 @@
 import streamlit as st
 import chatbot
 import time
-from PIL import Image
-from io import BytesIO
-
-# A wrapper class to mimic the UploadedFile object from Streamlit
-class InMemoryFile:
-    def __init__(self, name, type, data):
-        self.name = name
-        self.type = type
-        self._data = data
-
-    def getvalue(self):
-        return self._data
 
 def main():
     st.set_page_config(page_title="AI Petcare Assistant", page_icon="🐾")
@@ -47,10 +35,8 @@ def main():
         # Display chat messages
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
-                # Handle text content
                 if "content" in message:
                     st.markdown(message["content"])
-                # Handle file content
                 if "files" in message:
                     for file_info in message["files"]:
                         if file_info["type"].startswith("image/"):
@@ -81,29 +67,26 @@ def main():
             st.rerun()
 
         # Assistant response logic
-        if st.session_state.messages[-1]["role"] == "user":
+        if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
             with st.chat_message("assistant"):
                 message_placeholder = st.empty()
                 full_response = ""
 
-                # Prepare history for Gemini
                 gemini_history = []
                 for msg in st.session_state.messages:
                     role = "model" if msg["role"] == "assistant" else "user"
                     parts = []
-                    if "content" in msg:
+                    if "content" in msg and msg["content"]:
                         parts.append(msg["content"])
                     if "files" in msg:
                         for file_info in msg["files"]:
-                            # Create an in-memory file-like object
-                            in_memory_file = InMemoryFile(name=file_info["name"], type=file_info["type"], data=file_info["data"])
-                            prepared_file = chatbot.prepare_file(in_memory_file)
+                            prepared_file = chatbot.prepare_file(file_info["data"], file_info["name"])
                             parts.append(prepared_file)
-                    gemini_history.append({"role": role, "parts": parts})
+                    if parts:
+                        gemini_history.append({"role": role, "parts": parts})
 
                 assistant_response = chatbot.get_response(gemini_history)
 
-                # Simulate stream of response
                 for chunk in assistant_response.split():
                     full_response += chunk + " "
                     time.sleep(0.05)
@@ -111,7 +94,7 @@ def main():
                 message_placeholder.markdown(full_response)
             
             st.session_state.messages.append({"role": "assistant", "content": full_response})
-            # No need to rerun here, as the message is already displayed
+            st.rerun() # Rerun to clear the file uploader and input
 
 if __name__ == "__main__":
     main()
