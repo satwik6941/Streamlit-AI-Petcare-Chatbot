@@ -4,6 +4,7 @@ import os
 import dotenv as env
 from io import BytesIO
 from PIL import Image
+import mimetypes
 
 # Load environment variables from .env file
 env.load_dotenv()
@@ -42,7 +43,7 @@ Important Guidelines:
 - Always end your final advice with: "If you feel this is a very serious issue, please consult a veterinarian for further assistance."
 """
     model = genai.GenerativeModel(
-        'gemini-2.5-pro',
+        'gemini-1.5-pro-latest',  # Updated model to support multimodal inputs
         system_instruction=system_prompt
     )
     return model
@@ -50,14 +51,14 @@ Important Guidelines:
 def get_response(chat_history):
     """
     Gets a response from the generative AI model.
-    `chat_history` is expected to be a list of dictionaries in the Gemini format,
-    e.g., [{{"role": "user", "parts": ["Hello"]}}, {{"role": "model", "parts": ["Hi there!"]}}]
+    `chat_history` is expected to be a list of dictionaries in the Gemini format.
+    e.g., [{{"role": "user", "parts": ["Hello", {{"mime_type": "image/jpeg", "data": ...}}]}}]
     """
     if not chat_history:
         return ""
 
     model = get_model()
-    # The history for the model should not include the last user message, which is the prompt
+    # The history for the model should not include the last user message
     model_history = chat_history[:-1]
     last_message_parts = chat_history[-1]["parts"]
 
@@ -69,3 +70,26 @@ def get_response(chat_history):
     except Exception as e:
         print(f"Error getting response from Gemini: {e}")
         return "Sorry, I encountered an error. Please try again."
+
+def prepare_file(uploaded_file):
+    """
+    Prepares an uploaded file for the Gemini API.
+    Returns a dict with mime_type and data.
+    """
+    if uploaded_file is None:
+        return None
+    
+    # Read the file bytes
+    bytes_data = uploaded_file.getvalue()
+    
+    # Guess the MIME type
+    mime_type, _ = mimetypes.guess_type(uploaded_file.name)
+    
+    # If MIME type can't be guessed, default to octet-stream
+    if mime_type is None:
+        mime_type = 'application/octet-stream'
+        
+    return {
+        "mime_type": mime_type,
+        "data": bytes_data
+    }
