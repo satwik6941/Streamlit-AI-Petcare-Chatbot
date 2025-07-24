@@ -1,22 +1,7 @@
 import streamlit as st
-import base64
 from io import BytesIO
 from PIL import Image
 import chatbot
-
-def display_chat(chat_history):
-    """Displays the chat history in the Streamlit app."""
-    for message in chat_history:
-        with st.chat_message(message["role"]):
-            # For the model's role, the content is in 'parts'
-            if isinstance(message["content"], list):
-                for part in message["content"]:
-                    if isinstance(part, str):
-                        st.markdown(part)
-                    else: # Assumes it's an image
-                        st.image(part, width=200)
-            else: # For user's role, content is a simple string
-                st.markdown(message["content"])
 
 def main():
     st.set_page_config(page_title="AI Petcare Assistant", page_icon="🐾")
@@ -27,6 +12,8 @@ def main():
         st.session_state.chat_history = []
     if "pet_details_submitted" not in st.session_state:
         st.session_state.pet_details_submitted = False
+    if "uploaded_file_content" not in st.session_state:
+        st.session_state.uploaded_file_content = None
 
     # Get pet details
     if not st.session_state.pet_details_submitted:
@@ -44,9 +31,8 @@ def main():
                 chatbot.pet_age = pet_age
                 chatbot.pet_breed = pet_breed
                 st.session_state.pet_details_submitted = True
-                # Add a welcome message to the chat history
                 st.session_state.chat_history.append({
-                    "role": "model", 
+                    "role": "model",
                     "parts": [f"Great! I now know about {pet_name}, your {pet_age} year old {pet_breed} {pet_type}. How can I help you today?"]
                 })
                 st.rerun()
@@ -55,40 +41,139 @@ def main():
         # Display chat history
         for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
-                # The content of the message is now in the 'parts' field
-                st.markdown(message["parts"][0])
+                for part in message["parts"]:
+                    if isinstance(part, str):
+                        st.markdown(part)
+                    elif isinstance(part, Image.Image):
+                        st.image(part, width=200)
 
-        # Chat input
-        prompt = st.chat_input("Ask me anything about your pet...")
-        uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+        # Enhanced CSS for a modern, visually appealing chat input bar
+        st.markdown("""
+        <style>
+        .chat-input-outer {
+            display: flex;
+            justify-content: center;
+            margin-top: 18px;
+        }
+        .chat-input-container {
+            display: flex;
+            align-items: center;
+            background: #232a35;
+            border-radius: 32px;
+            box-shadow: 0 2px 12px 0 rgba(0,0,0,0.10);
+            padding: 6px 16px 6px 16px;
+            min-width: 350px;
+            max-width: 700px;
+            width: 100%;
+        }
+        .chat-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 1.08rem;
+            outline: none;
+            padding: 10px 0 10px 0;
+            margin: 0 8px;
+        }
+        .chat-input:focus {
+            background: #232a35;
+            box-shadow: 0 0 0 2px #4a90e2;
+            border-radius: 20px;
+        }
+        .icon-btn {
+            background: none;
+            border: none;
+            color: #b0b8c1;
+            font-size: 1.45rem;
+            margin: 0 6px 0 0;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: background 0.18s, color 0.18s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 36px;
+            width: 36px;
+        }
+        .icon-btn:hover {
+            background: #2c3440;
+            color: #4a90e2;
+        }
+        .send-btn {
+            background: #4a90e2;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            margin-left: 8px;
+            cursor: pointer;
+            transition: background 0.18s;
+            box-shadow: 0 2px 8px 0 rgba(74,144,226,0.10);
+        }
+        .send-btn:hover {
+            background: #357ab8;
+        }
+        .file-preview {
+            color: #b0b8c1;
+            font-size: 0.97rem;
+            margin-left: 10px;
+            margin-right: 0;
+            display: flex;
+            align-items: center;
+            background: #232a35;
+            border-radius: 12px;
+            padding: 2px 8px;
+        }
+        .remove-file-btn {
+            background: none;
+            border: none;
+            color: #e57373;
+            font-size: 1.1rem;
+            margin-left: 6px;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: background 0.18s;
+        }
+        .remove-file-btn:hover {
+            background: #2c3440;
+        }
+        @media (max-width: 600px) {
+            .chat-input-container { min-width: 0; max-width: 100vw; }
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-        if prompt:
-            # Add user message to chat history
+        # Standard Streamlit chat input UI
+        uploaded_file = st.file_uploader("Upload an image or file", type=["png", "jpg", "jpeg", "gif", "bmp", "webp", "pdf", "txt"], key="file_upload")
+        prompt = st.text_input("Ask me anything about what you're learning...", key="prompt_input")
+        send_clicked = st.button("Send")
+
+        # Attach file only to this prompt, then clear
+        if send_clicked and prompt:
             user_message_parts = [prompt]
-            if uploaded_file:
-                image = Image.open(uploaded_file)
-                user_message_parts.append(image)
-
+            image = None
+            if uploaded_file is not None:
+                file_bytes = uploaded_file.read()
+                try:
+                    image = Image.open(BytesIO(file_bytes))
+                    user_message_parts.append(image)
+                except Exception:
+                    user_message_parts.append(uploaded_file.name or "File uploaded")
             st.session_state.chat_history.append({"role": "user", "parts": user_message_parts})
-            
             with st.chat_message("user"):
                 st.markdown(prompt)
-                if uploaded_file:
+                if image:
                     st.image(image, width=200)
-
-            # Get chatbot response
             with st.spinner("Thinking..."):
-                # Pass the correctly formatted history to the chatbot
-                gemini_history = [
-                    {"role": m["role"], "parts": m["parts"]} 
-                    for m in st.session_state.chat_history
-                ]
-                response = chatbot.get_response(prompt, gemini_history)
+                response = chatbot.get_response(st.session_state.chat_history)
                 st.session_state.chat_history.append({"role": "model", "parts": [response]})
-
-            # Display the new response
-            with st.chat_message("model"):
-                st.markdown(response)
+                st.rerun()
 
 if __name__ == "__main__":
     main()
