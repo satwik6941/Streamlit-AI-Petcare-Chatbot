@@ -25,6 +25,9 @@ const GREETINGS = ['hi', 'hello', '/start', 'hey', 'greetings'];
 // Reset command to restart conversation
 const RESET_COMMANDS = ['/reset', '/restart', '/newpet'];
 
+// Debug command to check session
+const DEBUG_COMMANDS = ['/debug', '/status', '/check'];
+
 // Pet detail prompts with button configurations
 const PET_DETAIL_FIELDS = [
     { key: 'pet_name', prompt: 'What is your pet\'s name?', type: 'text' },
@@ -45,6 +48,12 @@ function isGreeting(text) {
 function isResetCommand(text) {
     if (!text) return false;
     return RESET_COMMANDS.some(r => text.trim().toLowerCase() === r);
+}
+
+// Helper to check if message is a debug command
+function isDebugCommand(text) {
+    if (!text) return false;
+    return DEBUG_COMMANDS.some(d => text.trim().toLowerCase() === d);
 }
 
 // Helper to get next missing pet detail
@@ -208,16 +217,43 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
         return;
     }
 
+    // Debug command to check session status
+    if (isDebugCommand(messageText)) {
+        const debugInfo = `🔍 **Session Debug Info:**
+**User ID:** ${userId}
+**Greeted:** ${session.greeted}
+**Ready:** ${session.ready}
+**Step:** ${session.petDetailStep}/${PET_DETAIL_FIELDS.length}
+**Questions Asked:** ${session.questionsAsked}/${session.maxQuestions}
+
+**Pet Details:**
+${JSON.stringify(session.petDetails, null, 2)}
+
+**Expected Next Field:** ${PET_DETAIL_FIELDS[session.petDetailStep]?.key || 'All complete'}`;
+        
+        await ctx.reply(debugInfo, { parse_mode: 'Markdown' });
+        return;
+    }
+
     // If not ready, collect pet details step by step
     if (!session.ready) {
         const currentField = PET_DETAIL_FIELDS[session.petDetailStep];
         if (currentField) {
             if (currentField.type === 'text') {
                 // Handle text input
-                session.petDetails[currentField.key] = messageText.trim();
-                session.petDetailStep++;
-                await sendPetDetailPrompt(ctx, session);
-                return;
+                if (messageText && messageText.trim()) {
+                    session.petDetails[currentField.key] = messageText.trim();
+                    session.petDetailStep++;
+                    
+                    console.log(`✅ Text input stored: ${currentField.key} = ${messageText.trim()}`);
+                    console.log(`📊 Current pet details:`, session.petDetails);
+                    
+                    await sendPetDetailPrompt(ctx, session);
+                    return;
+                } else {
+                    await ctx.reply('Please provide the information requested above.');
+                    return;
+                }
             } else if (currentField.type === 'buttons') {
                 // For button inputs, ignore text messages and show reminder
                 await ctx.reply('Please use the buttons above to make your selection.');
@@ -281,30 +317,46 @@ async function sendPetDetailPrompt(ctx, session) {
     console.log(`Sending prompt for step ${session.petDetailStep}, field: ${currentField?.key || 'none'}`);
     
     if (!currentField) {
-        // All details collected
+        // All details collected - let's verify we have all required data
+        const missingFields = [];
+        const requiredFields = ['pet_name', 'pet_type', 'pet_gender', 'pet_age', 'pet_breed', 'pet_weight'];
+        
+        for (const field of requiredFields) {
+            if (!session.petDetails[field] || session.petDetails[field].trim() === '') {
+                missingFields.push(field);
+            }
+        }
+        
+        if (missingFields.length > 0) {
+            console.log('❌ Missing fields detected:', missingFields);
+            console.log('🔄 Restarting registration from missing field');
+            // Find the first missing field and restart from there
+            const firstMissingIndex = PET_DETAIL_FIELDS.findIndex(f => missingFields.includes(f.key));
+            session.petDetailStep = firstMissingIndex;
+            await sendPetDetailPrompt(ctx, session);
+            return;
+        }
+        
         session.ready = true;
-        console.log('All pet details collected:', session.petDetails);
+        console.log('✅ All pet details collected successfully:', session.petDetails);
         
         // Create comprehensive summary with proper formatting
         const petData = session.petDetails;
         const summary = `🎉 **Pet Registration Complete!**
 
 📝 **Your Pet's Information:**
-🐾 **Name:** ${petData.pet_name || 'Not provided'}
-🐕/🐱 **Type:** ${petData.pet_type || 'Not provided'}
-♂️/♀️ **Gender:** ${petData.pet_gender || 'Not provided'}
-📅 **Age:** ${petData.pet_age || 'Not provided'}
-🏷️ **Breed:** ${petData.pet_breed || 'Not provided'}
-⚖️ **Weight:** ${petData.pet_weight || 'Not provided'}
+🐾 **Name:** ${petData.pet_name}
+🐕/🐱 **Type:** ${petData.pet_type}
+♂️/♀️ **Gender:** ${petData.pet_gender}
+📅 **Age:** ${petData.pet_age}
+🏷️ **Breed:** ${petData.pet_breed}
+⚖️ **Weight:** ${petData.pet_weight}
 
 ✅ **Ready for Consultation!**
-I'm Dr. Paws, your AI veterinary assistant. You can now:
-• Ask me about any health concerns
-• Send photos/videos of symptoms
-• Upload medical documents
-• Get expert advice and recommendations
+Hello! I'm Dr. Paws, your veterinary consultant. I'm here to help with any concerns about ${petData.pet_name}.
 
-💡 **How can I help ${petData.pet_name || 'your pet'} today?**`;
+💡 **What would you like to discuss about ${petData.pet_name} today?**
+You can describe symptoms, ask questions, or send photos/videos if needed.`;
         
         await ctx.reply(summary, { parse_mode: 'Markdown' });
         return;
@@ -358,17 +410,58 @@ bot.on('callback_query', async (ctx) => {
     const session = userSessions[userId];
     
     // Parse callback data (format: fieldKey_value)
-    const [fieldKey, ...valueParts] = data.split('_');
-    const selectedValue = valueParts.join('_'); // Join back in case value contains underscores
+    // Handle cases where fieldKey contains underscores (like pet_type, pet_gender)
+    let fieldKey, selectedValue;
+    
+    // Check if this matches any of our known field keys
+    const knownFieldKeys = PET_DETAIL_FIELDS.map(f => f.key);
+    let matchedFieldKey = null;
+    
+    for (const key of knownFieldKeys) {
+        if (data.startsWith(key + '_')) {
+            matchedFieldKey = key;
+            break;
+        }
+    }
+    
+    if (matchedFieldKey) {
+        fieldKey = matchedFieldKey;
+        selectedValue = data.substring(fieldKey.length + 1); // Get everything after "fieldKey_"
+    } else {
+        // Fallback to original parsing if no match found
+        const [firstPart, ...valueParts] = data.split('_');
+        fieldKey = firstPart;
+        selectedValue = valueParts.join('_');
+    }
     
     console.log(`Parsed: fieldKey=${fieldKey}, selectedValue=${selectedValue}`);
+    console.log(`Current session step: ${session.petDetailStep}, Expected field: ${PET_DETAIL_FIELDS[session.petDetailStep]?.key}`);
+    console.log(`Raw callback data: ${data}`);
+    console.log(`Known field keys: ${knownFieldKeys.join(', ')}`);
     
     try {
-        // Store the selected value (use selectedValue directly, not displayValue)
+        // Verify we're on the correct step for this field
+        const expectedField = PET_DETAIL_FIELDS[session.petDetailStep];
+        if (!expectedField || expectedField.key !== fieldKey) {
+            console.log(`❌ Mismatch: Expected ${expectedField?.key}, got ${fieldKey}`);
+            console.log(`📊 Session state - Step: ${session.petDetailStep}, Ready: ${session.ready}, Greeted: ${session.greeted}`);
+            
+            // If user is somehow out of sync, let them know what step they should be on
+            if (expectedField) {
+                await ctx.answerCbQuery(`Please complete step ${session.petDetailStep + 1}: ${expectedField.prompt}`);
+            } else {
+                await ctx.answerCbQuery('Registration appears to be complete. Try /reset to start over.');
+            }
+            return;
+        }
+        
+        // Store the selected value
         session.petDetails[fieldKey] = selectedValue;
         session.petDetailStep++;
         
-        console.log(`Stored ${fieldKey} = ${selectedValue}, moving to step ${session.petDetailStep}`);
+        console.log(`✅ Successfully stored ${fieldKey} = ${selectedValue}`);
+        console.log(`📊 Current pet details:`, session.petDetails);
+        console.log(`➡️ Moving to step ${session.petDetailStep}`);
         
         await ctx.answerCbQuery();
         
@@ -461,8 +554,14 @@ async function getChatbotResponse(userId, messageText, files = []) {
                     // Add bot's response to chat history
                     chatHistory.push({ role: 'model', parts: [{ text: result.response }] });
                     
-                    // Update questions asked count in session
-                    userSessions[userId].questionsAsked = questionsAsked;
+                    // Update questions asked count - increment if the response contains a question
+                    if (result.response.includes('?') && questionsAsked < maxQuestions) {
+                        userSessions[userId].questionsAsked = questionsAsked + 1;
+                        console.log(`🤔 Question detected. Count updated to: ${userSessions[userId].questionsAsked}/${maxQuestions}`);
+                    } else {
+                        // Keep the count as is
+                        userSessions[userId].questionsAsked = questionsAsked;
+                    }
                     
                     resolve(result.response);
                 }
@@ -494,7 +593,15 @@ async function getChatbotResponse(userId, messageText, files = []) {
                 message: messageText || "",
                 pet_details: petDetails,
                 files_count: files.length,
-                chat_history_length: chatHistory.length
+                chat_history_length: chatHistory.length,
+                questions_asked: questionsAsked,
+                max_questions: maxQuestions
+            });
+            console.log('📜 Chat History Summary:');
+            chatHistory.forEach((msg, idx) => {
+                const role = msg.role === 'user' ? '👤 User' : '🤖 Bot';
+                const text = msg.parts?.[0]?.text || '[Non-text content]';
+                console.log(`  ${idx + 1}. ${role}: ${text.substring(0, 50)}...`);
             });
             pythonProcess.stdin.write(inputData);
             pythonProcess.stdin.end();

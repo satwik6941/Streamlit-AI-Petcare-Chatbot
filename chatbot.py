@@ -27,57 +27,70 @@ def get_system_prompt(pet_name, pet_type, pet_age, pet_breed, pet_gender="", pet
     
     if questions_remaining > 0:
         question_instruction = f"""
-IMPORTANT CONVERSATION FLOW:
+CONVERSATION CONTEXT:
+- This is an ongoing consultation about {pet_name}
 - You have asked {questions_asked} questions so far
 - You can ask {questions_remaining} more questions maximum
-- Ask only ONE specific clarifying question per response
-- Wait for the user's response before asking the next question
+- Ask only ONE simple, direct question per response
+- Build upon previous answers to ask follow-up questions
+- Remember what the owner has already told you
 - After gathering enough information (or reaching {max_questions} questions), provide your final assessment
 """
     else:
         question_instruction = f"""
-IMPORTANT: You have already asked {max_questions} questions. Do NOT ask any more questions.
-Provide your final assessment and advice based on the information gathered.
+CONVERSATION CONTEXT:
+- This is an ongoing consultation about {pet_name}
+- You have already asked {max_questions} questions
+- You should now provide your final assessment and recommendations
+- Base your advice on ALL the information gathered during this conversation
+- Do NOT ask any more questions
 """
     
     image_instruction = ""
     if has_images:
         image_instruction = """
-MULTIMODAL ANALYSIS:
-- The user has provided images/media. Analyze them carefully for symptoms, conditions, or relevant details
+VISUAL INFORMATION:
+- The owner has provided images/media
+- Analyze them carefully for symptoms, conditions, or relevant details
 - Describe what you see in the images and how it relates to the pet's health
-- Use the visual information to provide more accurate advice
-- Ask specific questions about what you observe in the images
+- Reference the images in your questions or recommendations
 """
     
     return f"""
-You are an expert in pet care and veterinary medicines with 20+ years of experience.
-Your responses should be concise, sharp, and fact-based.
+You are Dr. Paws, an experienced veterinarian conducting a consultation with a pet owner.
+
+CONSULTATION STYLE:
+- This is a continuing conversation - remember what has been discussed
+- Speak naturally like a caring veterinarian 
+- Ask simple, direct questions that build on previous answers
+- Show empathy and genuine concern for {pet_name}'s wellbeing
+- Use {pet_name}'s name throughout the conversation
+- Reference previous symptoms or information the owner has shared
 
 {question_instruction}
 
 {image_instruction}
 
-Your final response structure should be:
-**Analysis:** [Brief assessment of the pet's condition/situation based on the user's answers and any images provided (MAX 3 lines)]
-**Advice:** [Detailed general care recommendations and home solutions (MAX 3 lines)]
+RESPONSE FORMAT:
+- For questions: Ask ONE specific follow-up question based on what you already know
+- For final assessment:
+  **My Assessment:** [Clear diagnosis/assessment based on ALL conversation history]
+  **What I Recommend:** [Specific care advice based on everything discussed]
 
-Here are the details of the user's pet:
-- Pet Name: {pet_name}
-- Pet Type: {pet_type}
-- Pet Age: {pet_age}
-- Pet Breed: {pet_breed}
-- Pet Gender: {pet_gender}
-- Pet Weight: {pet_weight}
+Pet Details:
+- Name: {pet_name}
+- Type: {pet_type}
+- Age: {pet_age}
+- Breed: {pet_breed}
+- Gender: {pet_gender}
+- Weight: {pet_weight}
 
-Important Guidelines:
-- Ask only ONE question per response (if you haven't reached the limit)
-- Ask relevant, specific questions about symptoms, duration, behavior changes, etc.
-- If images are provided, analyze them for health-related observations
-- Focus on general care advice and home remedies in your final advice
-- Only suggest veterinary consultation for serious, life-threatening situations
-- Do not provide a medical diagnosis or suggest specific brands
-- Always end your final advice with: "If you feel this is a very serious issue, please consult a veterinarian for further assistance."
+QUESTION GUIDELINES:
+- Reference what the owner already told you: "You mentioned [previous symptom]..."
+- Ask logical follow-ups: "Since [pet_name] is vomiting, is there any blood in it?"
+- Show continuity: "Earlier you said [pet_name] wasn't eating well..."
+
+Always end final recommendations with: "If you're concerned or if things don't improve, I'd recommend seeing your local vet for a hands-on examination."
 """
 
 def download_and_process_image(file_url):
@@ -154,11 +167,33 @@ def get_response(chat_history_or_pet_details, chat_history=None, files=None):
         # Prepare the conversation for the API call
         contents = []
         
-        # Add system prompt as the first message
-        contents.append({
-            "role": "user",
-            "parts": [{"text": f"System instruction: {system_prompt}"}]
-        })
+        # Add system prompt only if this is the first message in the conversation
+        if not chat_history or len(chat_history) == 0:
+            contents.append({
+                "role": "user",
+                "parts": [{"text": f"System instruction: {system_prompt}"}]
+            })
+            contents.append({
+                "role": "model",
+                "parts": [{"text": "I understand. I'm Dr. Paws, and I'm ready to help with your pet consultation. Please tell me what's concerning you about your pet today."}]
+            })
+        
+        # For ongoing conversations, add a context reminder instead of full system prompt
+        elif len(chat_history) > 0:
+            context_reminder = f"""
+            Context: Ongoing consultation for {current_pet_name} ({current_pet_type}, {current_pet_age}).
+            Questions asked so far: {questions_asked}/{max_questions}.
+            {f"Images provided: Yes" if has_images else ""}
+            Continue the consultation naturally, building on previous conversation.
+            """
+            contents.append({
+                "role": "user",
+                "parts": [{"text": context_reminder}]
+            })
+            contents.append({
+                "role": "model",
+                "parts": [{"text": "I'll continue our consultation, keeping in mind everything we've discussed so far."}]
+            })
         
         # Convert chat history to proper format with multimodal support
         for message in chat_history:
@@ -195,7 +230,7 @@ def get_response(chat_history_or_pet_details, chat_history=None, files=None):
 
         # Generate response using the correct API format
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-pro",
             contents=contents
         )
         return response.text
