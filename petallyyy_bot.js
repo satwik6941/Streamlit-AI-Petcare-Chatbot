@@ -1,6 +1,7 @@
 // Migrate from node-telegram-bot-api to telegraf
 const { Telegraf } = require('telegraf');
 const { spawn } = require('child_process');
+const express = require('express');
 
 require('dotenv').config();
 
@@ -619,11 +620,108 @@ async function getChatbotResponse(userId, messageText, files = []) {
 // Global error handling
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
 });
 
-bot.launch();
-console.log('Petallyyy Telegram Bot (Telegraf) is running...');
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit on unhandled rejection, just log it
+});
+
+// Graceful shutdown handling
+process.on('SIGINT', () => {
+    console.log('Received SIGINT, stopping bot...');
+    bot.stop('SIGINT');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('Received SIGTERM, stopping bot...');
+    bot.stop('SIGTERM');
+    process.exit(0);
+});
+
+// Launch bot with appropriate method based on environment
+async function startBot() {
+    try {
+        // Check if we're in a webhook environment (like Render, Heroku, etc.)
+        const PORT = process.env.PORT || 3000;
+        const WEBHOOK_URL = process.env.WEBHOOK_URL;
+        
+        if (WEBHOOK_URL) {
+            // Production mode: Use webhooks with Express
+            console.log(`Setting up webhook at ${WEBHOOK_URL}`);
+            
+            // Create Express app for webhook
+            const app = express();
+            app.use(express.json());
+            
+            // Health check endpoint
+            app.get('/', (req, res) => {
+                res.json({ 
+                    status: 'ok', 
+                    message: 'Petallyyy Telegram Bot is running',
+                    timestamp: new Date().toISOString()
+                });
+            });
+            
+            // Health check for render
+            app.get('/health', (req, res) => {
+                res.json({ status: 'healthy' });
+            });
+            
+            // Set up webhook
+            const webhookPath = `/bot${token}`;
+            await bot.telegram.setWebhook(`${WEBHOOK_URL}${webhookPath}`);
+            
+            // Use telegraf webhook middleware
+            app.use(bot.webhookCallback(webhookPath));
+            
+            // Start server
+            app.listen(PORT, () => {
+                console.log(`Petallyyy Telegram Bot (Telegraf) is running on webhook mode at port ${PORT}...`);
+                console.log(`Webhook URL: ${WEBHOOK_URL}${webhookPath}`);
+            });
+            
+        } else {
+            // Development mode: Use polling with better error handling
+            console.log('Starting bot in polling mode (development)...');
+            
+            // Clear any existing webhook first
+            await bot.telegram.deleteWebhook();
+            
+            // Launch with polling
+            await bot.launch({
+                polling: {
+                    timeout: 10,
+                    limit: 100,
+                    allowedUpdates: ['message', 'callback_query']
+                }
+            });
+            console.log('Petallyyy Telegram Bot (Telegraf) is running in polling mode...');
+        }
+    } catch (error) {
+        console.error('Error starting bot:', error);
+        
+        // If it's a 409 conflict error, try to resolve it
+        if (error.response && error.response.error_code === 409) {
+            console.log('Detected conflict error. Attempting to clear webhook and restart...');
+            try {
+                await bot.telegram.deleteWebhook();
+                console.log('Webhook cleared. Waiting 5 seconds before restart...');
+                setTimeout(() => {
+                    startBot();
+                }, 5000);
+                return;
+            } catch (clearError) {
+                console.error('Failed to clear webhook:', clearError);
+            }
+        }
+        
+        process.exit(1);
+    }
+}
+
+// Start the bot
+startBot();
 
