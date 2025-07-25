@@ -7,7 +7,9 @@
     "start": "node petallyyy_bot.js",
     "dev": "node petallyyy_bot.js",
     "clear-webhook": "node clear_webhook.js",
-    "test-webhook": "node test_webhook.js"
+    "test-webhook": "node test_webhook.js",
+    "diagnostic": "node diagnostic.js",
+    "setup-webhook": "node setup_webhook.js"
   },
   "keywords": [],
   "author": "",

@@ -496,10 +496,28 @@ async function getChatbotResponse(userId, messageText, files = []) {
     
     return new Promise((resolve, reject) => {
         // Use full path to python executable if needed
-        const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+        // Try different Python commands based on platform and environment
+        const pythonCommands = ['python', 'python3'];
+        let pythonCommand = 'python3';
+        
+        // On Windows, prefer 'python' first
+        if (process.platform === 'win32') {
+            pythonCommands.unshift('python');
+            pythonCommand = 'python';
+        }
+        
+        // Override if PYTHON_PATH is set
+        if (process.env.PYTHON_PATH) {
+            pythonCommand = process.env.PYTHON_PATH;
+        }
+        
+        console.log(`🐍 Using Python command: ${pythonCommand}`);
+        console.log(`📂 Working directory: ${__dirname}`);
+        
         const pythonProcess = spawn(pythonCommand, ['chatbot.py'], { 
             stdio: ['pipe', 'pipe', 'pipe'],
-            cwd: __dirname // Ensure we're in the correct directory
+            cwd: __dirname, // Ensure we're in the correct directory
+            env: { ...process.env } // Pass all environment variables
         });
         
         let responseData = '';
@@ -515,12 +533,14 @@ async function getChatbotResponse(userId, messageText, files = []) {
             }
         }, 30000); // 30 seconds
         
-        pythonProcess.stdout.on('data', (data) => {
-            responseData += data.toString();
-        });
-        
         pythonProcess.stderr.on('data', (data) => {
             errorData += data.toString();
+            console.error('🐍 Python stderr:', data.toString());
+        });
+        
+        pythonProcess.stdout.on('data', (data) => {
+            responseData += data.toString();
+            console.log('🐍 Python stdout:', data.toString());
         });
         
         pythonProcess.on('close', (code) => {
@@ -576,7 +596,16 @@ async function getChatbotResponse(userId, messageText, files = []) {
             if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
-                reject(new Error(`Failed to start Python process: ${error.message}`));
+                console.error(`❌ Python process error: ${error.message}`);
+                console.error(`🐍 Command tried: ${pythonCommand}`);
+                console.error(`📂 Working directory: ${__dirname}`);
+                
+                // Try to provide more helpful error message
+                if (error.code === 'ENOENT') {
+                    reject(new Error(`Python not found. Command: ${pythonCommand}. Make sure Python is installed and accessible.`));
+                } else {
+                    reject(new Error(`Failed to start Python process: ${error.message}`));
+                }
             }
         });
         
@@ -628,6 +657,24 @@ process.on('unhandledRejection', (reason, promise) => {
     // Don't exit on unhandled rejection, just log it
 });
 
+// Environment check function
+function checkEnvironment() {
+    const requiredEnvVars = ['TELEGRAM_BOT_TOKEN'];
+    const missing = requiredEnvVars.filter(varName => !process.env[varName]);
+    
+    if (missing.length > 0) {
+        console.error(`❌ Missing required environment variables: ${missing.join(', ')}`);
+        return false;
+    }
+    
+    console.log('✅ Required environment variables found');
+    console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Webhook URL: ${process.env.WEBHOOK_URL || 'Not set (will use polling)'}`);
+    console.log(`🐍 Python check: ${process.env.PYTHON_PATH || 'Will auto-detect'}`);
+    
+    return true;
+}
+
 // Graceful shutdown handling
 process.on('SIGINT', () => {
     console.log('Received SIGINT, stopping bot...');
@@ -643,6 +690,12 @@ process.on('SIGTERM', () => {
 
 // Launch bot with appropriate method based on environment
 async function startBot() {
+    // Check environment first
+    if (!checkEnvironment()) {
+        console.error('❌ Environment check failed. Exiting.');
+        process.exit(1);
+    }
+    
     try {
         // Check if we're in a webhook environment (like Render, Heroku, etc.)
         const PORT = process.env.PORT || 3000;
@@ -674,8 +727,20 @@ async function startBot() {
             const webhookPath = `/bot${token}`;
             await bot.telegram.setWebhook(`${WEBHOOK_URL}${webhookPath}`);
             
-            // Use telegraf webhook middleware
+            // Use telegraf webhook middleware with error handling
+            app.use(webhookPath, (req, res, next) => {
+                console.log(`📨 Webhook received: ${req.method} ${req.path}`);
+                console.log(`📄 Body keys: ${Object.keys(req.body)}`);
+                next();
+            });
+            
             app.use(bot.webhookCallback(webhookPath));
+            
+            // Error handling middleware
+            app.use((error, req, res, next) => {
+                console.error('❌ Webhook error:', error);
+                res.status(500).json({ error: 'Internal server error' });
+            });
             
             // Start server
             app.listen(PORT, () => {

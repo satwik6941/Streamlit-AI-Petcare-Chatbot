@@ -156,7 +156,8 @@ def get_response(chat_history_or_pet_details, chat_history=None, files=None):
             files = files or []
 
         if not chat_history:
-            return ""
+            # For initial message with no chat history, create a basic greeting
+            chat_history = []
 
         # Check if we have images/files to process
         has_images = any(f.get('type') == 'image' for f in files) if files else False
@@ -176,6 +177,13 @@ def get_response(chat_history_or_pet_details, chat_history=None, files=None):
             contents.append({
                 "role": "model",
                 "parts": [{"text": "I understand. I'm Dr. Paws, and I'm ready to help with your pet consultation. Please tell me what's concerning you about your pet today."}]
+            })
+            
+            # Add a default user message if none provided
+            initial_message = "Hello, I'd like to start a consultation for my pet."
+            contents.append({
+                "role": "user",
+                "parts": [{"text": initial_message}]
             })
         
         # For ongoing conversations, add a context reminder instead of full system prompt
@@ -260,10 +268,11 @@ if __name__ == "__main__":
             sys.exit(1)
             
         pet_details = data.get("pet_details")
-        chat_history = data.get("chat_history")
+        chat_history = data.get("chat_history", [])
         files = data.get("files", [])  # Extract files from input
         questions_asked = data.get("questions_asked", 0)
         max_questions = data.get("max_questions", 4)
+        message = data.get("message", "")  # Extract message from input
 
         if not isinstance(pet_details, dict):
             print(json.dumps({"error": "Invalid 'pet_details' format. Expected a dictionary."}), file=sys.stderr)
@@ -272,6 +281,13 @@ if __name__ == "__main__":
         if not isinstance(chat_history, list):
             print(json.dumps({"error": "Invalid 'chat_history' format. Expected a list."}), file=sys.stderr)
             sys.exit(1)
+
+        # If there's a message and empty chat history, add it to chat history
+        if message and len(chat_history) == 0:
+            chat_history.append({
+                "role": "user",
+                "parts": [{"text": message}]
+            })
 
         # Add question tracking to pet_details
         pet_details["questions_asked"] = questions_asked
