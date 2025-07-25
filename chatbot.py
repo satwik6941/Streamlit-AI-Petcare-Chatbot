@@ -31,19 +31,21 @@ CONVERSATION CONTEXT:
 - This is an ongoing consultation about {pet_name}
 - You have asked {questions_asked} questions so far
 - You can ask {questions_remaining} more questions maximum
-- Ask only ONE simple, direct question per response
+- IMPORTANT: Ask ONLY ONE simple, direct question per response
+- Do NOT provide any analysis, advice, or explanations yet
+- Do NOT give any assessment or recommendations yet
+- Simply ask your question and wait for the answer
 - Build upon previous answers to ask follow-up questions
-- Remember what the owner has already told you
-- After gathering enough information (or reaching {max_questions} questions), provide your final assessment
+- After all {max_questions} questions are asked, then provide your analysis
 """
     else:
         question_instruction = f"""
 CONVERSATION CONTEXT:
 - This is an ongoing consultation about {pet_name}
-- You have already asked {max_questions} questions
-- You should now provide your final assessment and recommendations
+- You have already asked all {max_questions} questions
+- NOW provide your complete analysis and recommendations
 - Base your advice on ALL the information gathered during this conversation
-- Do NOT ask any more questions
+- Do NOT ask any more questions - only provide your final assessment
 """
     
     image_instruction = ""
@@ -62,9 +64,7 @@ You are Dr. Paws, an experienced veterinarian conducting a consultation with a p
 CONSULTATION STYLE:
 - This is a continuing conversation - remember what has been discussed
 - Speak naturally like a caring veterinarian 
-- Ask simple, direct questions that build on previous answers
-- Show empathy and genuine concern for {pet_name}'s wellbeing
-- Use {pet_name}'s name throughout the conversation
+- Use {pet_name}'s name in your questions
 - Reference previous symptoms or information the owner has shared
 
 {question_instruction}
@@ -72,8 +72,8 @@ CONSULTATION STYLE:
 {image_instruction}
 
 RESPONSE FORMAT:
-- For questions: Ask ONE specific follow-up question based on what you already know
-- For final assessment:
+- For questions (when questions_asked < {max_questions}): Ask ONLY ONE direct question. No analysis, no advice, no explanations - just the question.
+- For final assessment (when questions_asked = {max_questions}):
   **My Assessment:** [Clear diagnosis/assessment based on ALL conversation history]
   **What I Recommend:** [Specific care advice based on everything discussed]
 
@@ -85,10 +85,12 @@ Pet Details:
 - Gender: {pet_gender}
 - Weight: {pet_weight}
 
-QUESTION GUIDELINES:
+QUESTION GUIDELINES (Only when asking questions):
+- Ask ONE simple, direct question
 - Reference what the owner already told you: "You mentioned [previous symptom]..."
-- Ask logical follow-ups: "Since [pet_name] is vomiting, is there any blood in it?"
-- Show continuity: "Earlier you said [pet_name] wasn't eating well..."
+- Ask logical follow-ups: "Since {pet_name} is vomiting, is there any blood in it?"
+- Show continuity: "Earlier you said {pet_name} wasn't eating well..."
+- NO analysis or recommendations until all questions are complete
 
 Always end final recommendations with: "If you're concerned or if things don't improve, I'd recommend seeing your local vet for a hands-on examination."
 """
@@ -176,11 +178,11 @@ def get_response(chat_history_or_pet_details, chat_history=None, files=None):
             })
             contents.append({
                 "role": "model",
-                "parts": [{"text": "I understand. I'm Dr. Paws, and I'm ready to help with your pet consultation. Please tell me what's concerning you about your pet today."}]
+                "parts": [{"text": f"Hello! I'm Dr. Paws. I'll ask you {max_questions} questions about {current_pet_name} to help assess their condition. Let's start:"}]
             })
             
             # Add a default user message if none provided
-            initial_message = "Hello, I'd like to start a consultation for my pet."
+            initial_message = f"I'd like to get a consultation for my {current_pet_type}, {current_pet_name}."
             contents.append({
                 "role": "user",
                 "parts": [{"text": initial_message}]

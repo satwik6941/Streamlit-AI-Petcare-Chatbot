@@ -29,6 +29,9 @@ const RESET_COMMANDS = ['/reset', '/restart', '/newpet'];
 // Debug command to check session
 const DEBUG_COMMANDS = ['/debug', '/status', '/check'];
 
+// Exit commands to end conversation
+const EXIT_COMMANDS = ['exit', 'quit', 'bye', 'goodbye', '/exit', '/quit', '/bye'];
+
 // Pet detail prompts with button configurations
 const PET_DETAIL_FIELDS = [
     { key: 'pet_name', prompt: 'What is your pet\'s name?', type: 'text' },
@@ -55,6 +58,12 @@ function isResetCommand(text) {
 function isDebugCommand(text) {
     if (!text) return false;
     return DEBUG_COMMANDS.some(d => text.trim().toLowerCase() === d);
+}
+
+// Helper to check if message is an exit command
+function isExitCommand(text) {
+    if (!text) return false;
+    return EXIT_COMMANDS.some(e => text.trim().toLowerCase() === e);
 }
 
 // Helper to get next missing pet detail
@@ -199,7 +208,7 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
-        await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
+        await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.\n\n💬 **Tip:** You can type "exit" or "quit" anytime to end our conversation.');
         await sendPetDetailPrompt(ctx, session);
         return;
     }
@@ -233,6 +242,25 @@ ${JSON.stringify(session.petDetails, null, 2)}
 **Expected Next Field:** ${PET_DETAIL_FIELDS[session.petDetailStep]?.key || 'All complete'}`;
         
         await ctx.reply(debugInfo, { parse_mode: 'Markdown' });
+        return;
+    }
+
+    // Exit command to end conversation
+    if (isExitCommand(messageText)) {
+        const petName = session.petDetails?.pet_name || 'your pet';
+        const exitMessage = `Thanks for chatting, take care of ${petName}! 🐾
+        
+If you need help again, just say "hi" to start a new consultation.`;
+        
+        // Reset session
+        session.greeted = false;
+        session.petDetails = {};
+        session.petDetailStep = 0;
+        session.ready = false;
+        session.questionsAsked = 0;
+        session.chatHistory = [];
+        
+        await ctx.reply(exitMessage);
         return;
     }
 
@@ -357,7 +385,11 @@ async function sendPetDetailPrompt(ctx, session) {
 Hello! I'm Dr. Paws, your veterinary consultant. I'm here to help with any concerns about ${petData.pet_name}.
 
 💡 **What would you like to discuss about ${petData.pet_name} today?**
-You can describe symptoms, ask questions, or send photos/videos if needed.`;
+You can describe symptoms, ask questions, or send photos/videos if needed.
+
+💬 **Commands you can use:**
+• Type "exit" or "quit" to end the consultation
+• Type "/reset" to start over with a new pet`;
         
         await ctx.reply(summary, { parse_mode: 'Markdown' });
         return;
