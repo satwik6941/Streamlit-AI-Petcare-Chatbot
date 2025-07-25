@@ -1,0 +1,16 @@
+{
+  "name": "petallyyy_bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for Petallyyy",
+  "main": "petallyyy_bot.js",
+  "scripts": {
+    "start": "node petallyyy_bot.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "telegraf": "^4.16.3"
+  }
+}
