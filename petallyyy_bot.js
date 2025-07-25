@@ -142,7 +142,8 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
             greeted: false, 
             ready: false,
             questionsAsked: 0, // Track number of clarifying questions asked
-            maxQuestions: 4    // Maximum questions allowed
+            maxQuestions: 4,   // Maximum questions allowed
+            waitingForCustomAge: false // Flag for custom age input
         };
     }
     const session = userSessions[userId];
@@ -155,8 +156,9 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
+        session.waitingForCustomAge = false;
         await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
-        await ctx.reply(PET_DETAIL_FIELDS[0].prompt);
+        await sendPetDetailPrompt(ctx, session);
         return;
     }
 
@@ -168,9 +170,24 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
+        session.waitingForCustomAge = false;
         await ctx.reply('Starting fresh! Let\'s begin again.');
         await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
-        await ctx.reply(PET_DETAIL_FIELDS[0].prompt);
+        await sendPetDetailPrompt(ctx, session);
+        return;
+    }
+
+    // Handle custom age input
+    if (session.waitingForCustomAge) {
+        const customAge = messageText.trim();
+        if (customAge) {
+            session.petDetails.pet_age = customAge;
+            session.petDetailStep++;
+            session.waitingForCustomAge = false;
+            await sendPetDetailPrompt(ctx, session);
+        } else {
+            await ctx.reply('Please enter a valid age for your pet.');
+        }
         return;
     }
 
@@ -178,16 +195,15 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
     if (!session.ready) {
         const currentField = PET_DETAIL_FIELDS[session.petDetailStep];
         if (currentField) {
-            session.petDetails[currentField.key] = messageText.trim();
-            session.petDetailStep++;
-            const nextField = PET_DETAIL_FIELDS[session.petDetailStep];
-            if (nextField) {
-                await ctx.reply(nextField.prompt);
+            if (currentField.type === 'text') {
+                // Handle text input
+                session.petDetails[currentField.key] = messageText.trim();
+                session.petDetailStep++;
+                await sendPetDetailPrompt(ctx, session);
                 return;
-            } else {
-                session.ready = true;
-                await ctx.reply(`Nice to meet you and your pet, ${session.petDetails.pet_name}! 🐾`);
-                await ctx.reply('How can I help you today? Please describe your pet\'s issue or send any relevant files (images, videos, PDFs, etc.).');
+            } else if (currentField.type === 'buttons') {
+                // For button inputs, ignore text messages and show reminder
+                await ctx.reply('Please use the buttons above to make your selection.');
                 return;
             }
         }
@@ -226,7 +242,128 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
     }
 });
 
-// Update getChatbotResponse to accept files and fix hanging
+// Helper to send pet detail prompts with appropriate interface
+async function sendPetDetailPrompt(ctx, session) {
+    const currentField = PET_DETAIL_FIELDS[session.petDetailStep];
+    
+    console.log(`Sending prompt for step ${session.petDetailStep}, field: ${currentField?.key || 'none'}`);
+    
+    if (!currentField) {
+        // All details collected
+        session.ready = true;
+        console.log('All pet details collected:', session.petDetails);
+        await ctx.reply(`Great! Here's what I know about your pet:
+🐾 Name: ${session.petDetails.pet_name}
+🐕/🐱 Type: ${session.petDetails.pet_type}
+📅 Age: ${session.petDetails.pet_age}
+🏷️ Breed: ${session.petDetails.pet_breed}
+♂️/♀️ Gender: ${session.petDetails.pet_gender}
+⚖️ Weight: ${session.petDetails.pet_weight}`);
+        await ctx.reply('How can I help you today? Please describe your pet\'s issue or send any relevant files (images, videos, PDFs, etc.).');
+        return;
+    }
+
+    if (currentField.type === 'text') {
+        await ctx.reply(currentField.prompt);
+    } else if (currentField.type === 'buttons') {
+        const keyboard = {
+            inline_keyboard: []
+        };
+        
+        console.log(`Creating buttons for ${currentField.key} with options:`, currentField.options);
+        
+        if (currentField.key === 'pet_age') {
+            // Create age buttons in rows of 5
+            const ageButtons = [];
+            for (let i = 0; i < currentField.options.length; i++) {
+                const callbackData = `${currentField.key}_${currentField.options[i].replace(/\s/g, '_')}`;
+                ageButtons.push({
+                    text: currentField.options[i],
+                    callback_data: callbackData
+                });
+                
+                // Add row every 5 buttons or at the end
+                if ((i + 1) % 5 === 0 || i === currentField.options.length - 1) {
+                    keyboard.inline_keyboard.push([...ageButtons]);
+                    ageButtons.length = 0; // Clear the array
+                }
+            }
+        } else {
+            // For other button types (pet_type, pet_gender), create single row
+            keyboard.inline_keyboard.push(
+                currentField.options.map(option => ({
+                    text: option,
+                    callback_data: `${currentField.key}_${option}`
+                }))
+            );
+        }
+        
+        console.log('Generated keyboard:', JSON.stringify(keyboard, null, 2));
+        
+        await ctx.reply(currentField.prompt, {
+            reply_markup: keyboard
+        });
+    }
+}
+
+// Handle callback queries for button selections
+bot.on('callback_query', async (ctx) => {
+    const userId = ctx.from.id;
+    const data = ctx.callbackQuery.data;
+    
+    console.log(`Received callback query from user ${userId}: ${data}`);
+    
+    // Initialize user session if not present
+    if (!userSessions[userId]) {
+        userSessions[userId] = { 
+            chatHistory: [], 
+            petDetails: {}, 
+            petDetailStep: 0, 
+            greeted: false, 
+            ready: false,
+            questionsAsked: 0,
+            maxQuestions: 4,
+            waitingForCustomAge: false
+        };
+    }
+    
+    const session = userSessions[userId];
+    
+    // Parse callback data (format: fieldKey_value)
+    const [fieldKey, ...valueParts] = data.split('_');
+    const rawValue = valueParts.join('_');
+    const displayValue = valueParts.join(' '); // Join back with spaces for display
+    
+    console.log(`Parsed: fieldKey=${fieldKey}, rawValue=${rawValue}, displayValue=${displayValue}`);
+    
+    try {
+        if (fieldKey === 'pet_age' && rawValue === 'Custom') {
+            session.waitingForCustomAge = true;
+            await ctx.answerCbQuery();
+            await ctx.editMessageText('Please type your pet\'s age (e.g., "6 months", "2.5 years"):');
+        } else {
+            // Store the selected value
+            session.petDetails[fieldKey] = displayValue;
+            session.petDetailStep++;
+            
+            console.log(`Stored ${fieldKey} = ${displayValue}, moving to step ${session.petDetailStep}`);
+            
+            await ctx.answerCbQuery();
+            
+            // Find the current field to get the prompt
+            const currentField = PET_DETAIL_FIELDS.find(f => f.key === fieldKey);
+            if (currentField) {
+                await ctx.editMessageText(`${currentField.prompt}\n✅ Selected: ${displayValue}`);
+            }
+            
+            // Move to next step
+            await sendPetDetailPrompt(ctx, session);
+        }
+    } catch (error) {
+        console.error('Error handling callback query:', error);
+        await ctx.answerCbQuery('An error occurred. Please try again.');
+    }
+});
 async function getChatbotResponse(userId, messageText, files = []) {
     if (!userSessions[userId]) {
         userSessions[userId] = { 

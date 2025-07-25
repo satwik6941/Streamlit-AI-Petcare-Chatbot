@@ -15,8 +15,10 @@ pet_name = ""
 pet_type = ""
 pet_age = ""
 pet_breed = ""
+pet_gender = ""
+pet_weight = ""
 
-def get_system_prompt(pet_name, pet_type, pet_age, pet_breed, questions_asked=0, max_questions=4):
+def get_system_prompt(pet_name, pet_type, pet_age, pet_breed, pet_gender="", pet_weight="", questions_asked=0, max_questions=4):
     """Creates a system prompt based on the current pet details and question tracking."""
     questions_remaining = max_questions - questions_asked
     
@@ -50,6 +52,8 @@ Here are the details of the user's pet:
 - Pet Type (Dog/Cat): {pet_type}
 - Pet Age: {pet_age}
 - Pet Breed: {pet_breed}
+- Pet Gender: {pet_gender}
+- Pet Weight: {pet_weight}
 
 Important Guidelines:
 - Ask only ONE question per response (if you haven't reached the limit)
@@ -76,6 +80,8 @@ def get_response(chat_history_or_pet_details, chat_history=None):
             current_pet_type = pet_type
             current_pet_age = pet_age
             current_pet_breed = pet_breed
+            current_pet_gender = pet_gender
+            current_pet_weight = pet_weight
             questions_asked = 0  # Default for Streamlit UI
             max_questions = 4
         else:
@@ -85,6 +91,8 @@ def get_response(chat_history_or_pet_details, chat_history=None):
             current_pet_type = pet_details.get("pet_type", "")
             current_pet_age = pet_details.get("pet_age", "")
             current_pet_breed = pet_details.get("pet_breed", "")
+            current_pet_gender = pet_details.get("pet_gender", "")
+            current_pet_weight = pet_details.get("pet_weight", "")
             questions_asked = pet_details.get("questions_asked", 0)
             max_questions = pet_details.get("max_questions", 4)
 
@@ -92,7 +100,7 @@ def get_response(chat_history_or_pet_details, chat_history=None):
             return ""
 
         # Get the system prompt with question tracking
-        system_prompt = get_system_prompt(current_pet_name, current_pet_type, current_pet_age, current_pet_breed, questions_asked, max_questions)
+        system_prompt = get_system_prompt(current_pet_name, current_pet_type, current_pet_age, current_pet_breed, current_pet_gender, current_pet_weight, questions_asked, max_questions)
         
         # Prepare the conversation for the API call
         contents = []
