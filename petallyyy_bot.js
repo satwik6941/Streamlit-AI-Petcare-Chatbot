@@ -19,68 +19,111 @@ const userSessions = {}; // userId: { chatHistory: [], petDetails: {} }
 const lastMessageTime = {};
 const RATE_LIMIT_DELAY = 1000; // 1 second in milliseconds
 
-// Function to get response from chatbot.py
-async function getChatbotResponse(userId, messageText) {
-    if (!userSessions[userId]) {
-        userSessions[userId] = { chatHistory: [], petDetails: {} };
-    }
+// List of greeting keywords
+const GREETINGS = ['hi', 'hello', '/start', 'hey', 'greetings'];
 
-    const { chatHistory, petDetails } = userSessions[userId];
+// Reset command to restart conversation
+const RESET_COMMANDS = ['/reset', '/restart', '/newpet'];
 
-    // Add user's message to chat history
-    chatHistory.push({ role: 'user', parts: [{ text: messageText }] });
+// Pet detail prompts with button configurations
+const PET_DETAIL_FIELDS = [
+    { key: 'pet_name', prompt: 'What is your pet\'s name?', type: 'text' },
+    { key: 'pet_type', prompt: 'Is your pet a Dog or a Cat?', type: 'buttons', options: ['Dog', 'Cat'] },
+    { key: 'pet_age', prompt: 'How old is your pet?', type: 'buttons', options: ['1 year', '2 years', '3 years', '4 years', '5 years', '6 years', '7 years', '8 years', '9 years', '10 years', 'Custom'] },
+    { key: 'pet_breed', prompt: 'What is your pet\'s breed?', type: 'text' },
+    { key: 'pet_gender', prompt: 'What is your pet\'s gender?', type: 'buttons', options: ['Male', 'Female'] },
+    { key: 'pet_weight', prompt: 'What is your pet\'s weight? (Please include unit like kg or lbs)', type: 'text' }
+];
 
-    return new Promise((resolve, reject) => {
-        const pythonProcess = spawn('python', ['chatbot.py']);
-
-        let responseData = '';
-        let errorData = '';
-
-        pythonProcess.stdout.on('data', (data) => {
-            responseData += data.toString();
-        });
-
-        pythonProcess.stderr.on('data', (data) => {
-            errorData += data.toString();
-        });
-
-        pythonProcess.on('close', (code) => {
-            if (code !== 0) {
-                console.error(`Chatbot process exited with code ${code}. Stderr: ${errorData}`);
-                reject(new Error(`Chatbot process exited with an error. Please check the bot's logs for details.`));
-                return;
-            }
-
-            try {
-                const result = JSON.parse(responseData);
-                if (result.error) {
-                    console.error(`Error from chatbot.py: ${result.error}`);
-                    reject(new Error(`Chatbot returned an error: ${result.error}. Please try again.`));
-                } else {
-                    // Add bot's response to chat history
-                    chatHistory.push({ role: 'model', parts: [{ text: result.response }] });
-                    resolve(result.response);
-                }
-            } catch (e) {
-                console.error(`Failed to parse JSON from chatbot.py: ${e}. Raw response: ${responseData}`);
-                reject(new Error(`Received an unreadable response from the chatbot. Please try again.`));
-            }
-        });
-
-        // Send data to chatbot.py via stdin
-        pythonProcess.stdin.write(JSON.stringify({
-            pet_details: petDetails,
-            chat_history: chatHistory
-        }));
-        pythonProcess.stdin.end();
-    });
+// Helper to check if message is a greeting
+function isGreeting(text) {
+    if (!text) return false;
+    return GREETINGS.some(g => text.trim().toLowerCase() === g);
 }
 
-// Telegraf message handler
-bot.on('text', async (ctx) => {
+// Helper to check if message is a reset command
+function isResetCommand(text) {
+    if (!text) return false;
+    return RESET_COMMANDS.some(r => text.trim().toLowerCase() === r);
+}
+
+// Helper to get next missing pet detail
+function getNextPetDetail(petDetails) {
+    for (const field of PET_DETAIL_FIELDS) {
+        if (!petDetails[field.key]) return field;
+    }
+    return null;
+}
+
+// Helper to extract file info from Telegraf message
+async function extractFiles(ctx) {
+    const files = [];
+    // Handle photos
+    if (ctx.message.photo) {
+        // Get the highest resolution photo
+        const photo = ctx.message.photo[ctx.message.photo.length - 1];
+        const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+        files.push({
+            type: 'image',
+            file_id: photo.file_id,
+            file_link: fileLink.href,
+            file_unique_id: photo.file_unique_id
+        });
+    }
+    // Handle documents (PDFs, videos, etc.)
+    if (ctx.message.document) {
+        const doc = ctx.message.document;
+        const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+        files.push({
+            type: doc.mime_type.startsWith('image/') ? 'image' : doc.mime_type,
+            file_id: doc.file_id,
+            file_link: fileLink.href,
+            file_name: doc.file_name,
+            mime_type: doc.mime_type
+        });
+    }
+    // Handle videos
+    if (ctx.message.video) {
+        const video = ctx.message.video;
+        const fileLink = await ctx.telegram.getFileLink(video.file_id);
+        files.push({
+            type: 'video',
+            file_id: video.file_id,
+            file_link: fileLink.href,
+            mime_type: video.mime_type
+        });
+    }
+    // Handle audio
+    if (ctx.message.audio) {
+        const audio = ctx.message.audio;
+        const fileLink = await ctx.telegram.getFileLink(audio.file_id);
+        files.push({
+            type: 'audio',
+            file_id: audio.file_id,
+            file_link: fileLink.href,
+            mime_type: audio.mime_type
+        });
+    }
+    // Handle voice
+    if (ctx.message.voice) {
+        const voice = ctx.message.voice;
+        const fileLink = await ctx.telegram.getFileLink(voice.file_id);
+        files.push({
+            type: 'voice',
+            file_id: voice.file_id,
+            file_link: fileLink.href,
+            mime_type: voice.mime_type
+        });
+    }
+    return files;
+}
+
+// Enhanced message handler for all content types
+bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => {
     const chatId = ctx.chat.id;
     const userId = ctx.from.id;
-    const messageText = ctx.message.text;
+    const messageText = ctx.message.text || '';
+    const files = await extractFiles(ctx);
 
     // Implement rate limiting
     const now = Date.now();
@@ -90,57 +133,207 @@ bot.on('text', async (ctx) => {
     }
     lastMessageTime[userId] = now;
 
-    if (!messageText) {
-        await ctx.reply('Please send a text message.');
+    // Initialize user session if not present
+    if (!userSessions[userId]) {
+        userSessions[userId] = { 
+            chatHistory: [], 
+            petDetails: {}, 
+            petDetailStep: 0, 
+            greeted: false, 
+            ready: false,
+            questionsAsked: 0, // Track number of clarifying questions asked
+            maxQuestions: 4    // Maximum questions allowed
+        };
+    }
+    const session = userSessions[userId];
+
+    // Greeting and pet details collection flow
+    if (isGreeting(messageText) && !session.greeted) {
+        session.greeted = true;
+        session.petDetails = {};
+        session.petDetailStep = 0;
+        session.ready = false;
+        session.questionsAsked = 0;
+        session.chatHistory = [];
+        await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
+        await ctx.reply(PET_DETAIL_FIELDS[0].prompt);
         return;
     }
 
-    // Improved /setpet command parsing (allow spaces in name and breed)
-    if (messageText.startsWith('/setpet')) {
-        // Usage: /setpet "Pet Name" <type> <age> "Pet Breed"
-        const petRegex = /^\/setpet\s+"([^"]+)"\s+(Dog|Cat)\s+(\d{1,2})\s+"([^"]+)"$/i;
-        const match = messageText.match(petRegex);
-        if (match) {
-            const [, pet_name, pet_type, pet_age, pet_breed] = match;
-            if (!['Dog', 'Cat'].includes(pet_type)) {
-                await ctx.reply('Pet type must be Dog or Cat.');
+    // Reset command to start over
+    if (isResetCommand(messageText)) {
+        session.greeted = false;
+        session.petDetails = {};
+        session.petDetailStep = 0;
+        session.ready = false;
+        session.questionsAsked = 0;
+        session.chatHistory = [];
+        await ctx.reply('Starting fresh! Let\'s begin again.');
+        await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
+        await ctx.reply(PET_DETAIL_FIELDS[0].prompt);
+        return;
+    }
+
+    // If not ready, collect pet details step by step
+    if (!session.ready) {
+        const currentField = PET_DETAIL_FIELDS[session.petDetailStep];
+        if (currentField) {
+            session.petDetails[currentField.key] = messageText.trim();
+            session.petDetailStep++;
+            const nextField = PET_DETAIL_FIELDS[session.petDetailStep];
+            if (nextField) {
+                await ctx.reply(nextField.prompt);
+                return;
+            } else {
+                session.ready = true;
+                await ctx.reply(`Nice to meet you and your pet, ${session.petDetails.pet_name}! 🐾`);
+                await ctx.reply('How can I help you today? Please describe your pet\'s issue or send any relevant files (images, videos, PDFs, etc.).');
                 return;
             }
-            if (isNaN(Number(pet_age)) || Number(pet_age) < 0) {
-                await ctx.reply('Pet age must be a valid non-negative number.');
-                return;
-            }
-            userSessions[userId] = userSessions[userId] || { chatHistory: [], petDetails: {} };
-            userSessions[userId].petDetails = {
-                pet_name,
-                pet_type,
-                pet_age,
-                pet_breed
-            };
-            await ctx.reply(`Pet details set: Name=${pet_name}, Type=${pet_type}, Age=${pet_age}, Breed=${pet_breed}`);
-        } else {
-            await ctx.reply('Usage: /setpet "<name>" <Dog|Cat> <age> "<breed>"\nExample: /setpet "Tommy" Dog 5 "Golden Retriever"');
         }
-        return;
     }
 
-    // Handle /start command
-    if (messageText === '/start') {
-        if (!userSessions[userId]) {
-            userSessions[userId] = { chatHistory: [], petDetails: {} };
-        }
-        await ctx.reply('Welcome to Petallyyy Bot!\nPlease tell me about your pet\'s issue.\nYou can set your pet details using:\n/setpet "<name>" <Dog|Cat> <age> "<breed>"\nExample: /setpet "Tommy" Dog 5 "Golden Retriever"');
-        return;
-    }
-
+    // After pet details, start main conversation
     try {
-        const response = await getChatbotResponse(userId, messageText);
-        await ctx.reply(response);
+        // Add multimodal input to chat history
+        const userParts = [];
+        if (messageText) userParts.push({ text: messageText });
+        if (files.length > 0) {
+            for (const file of files) {
+                userParts.push({ file });
+            }
+        }
+        if (userParts.length > 0) {
+            session.chatHistory.push({ role: 'user', parts: userParts });
+        }
+        // Call chatbot.py with full context
+        const response = await getChatbotResponse(userId, messageText, files);
+        await ctx.reply(response, { disable_web_page_preview: true });
     } catch (error) {
-        console.error('Error sending message to chatbot:', error);
-        await ctx.reply('Sorry, something went wrong while processing your request. Please try again later.');
+        console.error('Error processing request:', error);
+        // Send a more specific error message based on the error type
+        let errorMessage = 'Sorry, something went wrong. ';
+        if (error.message.includes('GEMINI_API_KEY')) {
+            errorMessage += 'API key is not configured properly.';
+        } else if (error.message.includes('timeout')) {
+            errorMessage += 'The request took too long. Please try again.';
+        } else if (error.message.includes('Python process')) {
+            errorMessage += 'There was an issue with the chatbot service.';
+        } else {
+            errorMessage += 'Please try again later.';
+        }
+        await ctx.reply(errorMessage);
     }
 });
+
+// Update getChatbotResponse to accept files and fix hanging
+async function getChatbotResponse(userId, messageText, files = []) {
+    if (!userSessions[userId]) {
+        userSessions[userId] = { 
+            chatHistory: [], 
+            petDetails: {},
+            questionsAsked: 0,
+            maxQuestions: 4
+        };
+    }
+    const { chatHistory, petDetails, questionsAsked, maxQuestions } = userSessions[userId];
+    
+    return new Promise((resolve, reject) => {
+        // Use full path to python executable if needed
+        const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+        const pythonProcess = spawn(pythonCommand, ['chatbot.py'], { 
+            stdio: ['pipe', 'pipe', 'pipe'],
+            cwd: __dirname // Ensure we're in the correct directory
+        });
+        
+        let responseData = '';
+        let errorData = '';
+        let resolved = false;
+        
+        // Set up timeout first
+        const timeout = setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                pythonProcess.kill('SIGKILL');
+                reject(new Error('Chatbot process timed out after 30 seconds.'));
+            }
+        }, 30000); // 30 seconds
+        
+        pythonProcess.stdout.on('data', (data) => {
+            responseData += data.toString();
+        });
+        
+        pythonProcess.stderr.on('data', (data) => {
+            errorData += data.toString();
+        });
+        
+        pythonProcess.on('close', (code) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeout);
+            
+            if (code !== 0) {
+                console.error(`Chatbot process exited with code ${code}. Stderr: ${errorData}`);
+                reject(new Error(`Chatbot error: ${errorData || 'Unknown error occurred'}`));
+                return;
+            }
+            
+            try {
+                // Try to parse the response
+                if (!responseData.trim()) {
+                    reject(new Error('No response received from chatbot'));
+                    return;
+                }
+                
+                const result = JSON.parse(responseData.trim());
+                if (result.error) {
+                    console.error(`Error from chatbot.py: ${result.error}`);
+                    reject(new Error(`Chatbot error: ${result.error}`));
+                } else {
+                    // Add bot's response to chat history
+                    chatHistory.push({ role: 'model', parts: [{ text: result.response }] });
+                    
+                    // Check if this response contains a question (and we haven't reached max questions)
+                    if (result.response.includes('?') && questionsAsked < maxQuestions) {
+                        userSessions[userId].questionsAsked++;
+                    }
+                    
+                    resolve(result.response);
+                }
+            } catch (e) {
+                console.error(`Failed to parse JSON from chatbot.py: ${e}. Raw response: ${responseData}`);
+                reject(new Error(`Invalid response format from chatbot. Raw: ${responseData.substring(0, 200)}...`));
+            }
+        });
+        
+        pythonProcess.on('error', (error) => {
+            if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                reject(new Error(`Failed to start Python process: ${error.message}`));
+            }
+        });
+        
+        // Send data to chatbot.py via stdin
+        try {
+            const inputData = JSON.stringify({
+                pet_details: petDetails,
+                chat_history: chatHistory,
+                questions_asked: questionsAsked,
+                max_questions: maxQuestions
+            });
+            pythonProcess.stdin.write(inputData);
+            pythonProcess.stdin.end();
+        } catch (error) {
+            if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                pythonProcess.kill('SIGKILL');
+                reject(new Error(`Failed to send data to Python process: ${error.message}`));
+            }
+        }
+    });
+}
 
 // Global error handling
 process.on('uncaughtException', (err) => {
