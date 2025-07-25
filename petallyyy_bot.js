@@ -28,10 +28,10 @@ const RESET_COMMANDS = ['/reset', '/restart', '/newpet'];
 // Pet detail prompts with button configurations
 const PET_DETAIL_FIELDS = [
     { key: 'pet_name', prompt: 'What is your pet\'s name?', type: 'text' },
-    { key: 'pet_type', prompt: 'Is your pet a Dog or a Cat?', type: 'buttons', options: ['Dog', 'Cat'] },
-    { key: 'pet_age', prompt: 'How old is your pet?', type: 'buttons', options: ['1 year', '2 years', '3 years', '4 years', '5 years', '6 years', '7 years', '8 years', '9 years', '10 years', 'Custom'] },
+    { key: 'pet_type', prompt: 'What type of pet do you have?', type: 'buttons', options: ['Dog', 'Cat', 'Bird', 'Other'] },
+    { key: 'pet_gender', prompt: 'What is your pet\'s gender?', type: 'buttons', options: ['Male', 'Female', 'Unknown'] },
+    { key: 'pet_age', prompt: 'How old is your pet? (e.g., "2 years", "6 months")', type: 'text' },
     { key: 'pet_breed', prompt: 'What is your pet\'s breed?', type: 'text' },
-    { key: 'pet_gender', prompt: 'What is your pet\'s gender?', type: 'buttons', options: ['Male', 'Female'] },
     { key: 'pet_weight', prompt: 'What is your pet\'s weight? (Please include unit like kg or lbs)', type: 'text' }
 ];
 
@@ -58,68 +58,102 @@ function getNextPetDetail(petDetails) {
 // Helper to extract file info from Telegraf message
 async function extractFiles(ctx) {
     const files = [];
-    // Handle photos
-    if (ctx.message.photo) {
-        // Get the highest resolution photo
-        const photo = ctx.message.photo[ctx.message.photo.length - 1];
-        const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-        files.push({
-            type: 'image',
-            file_id: photo.file_id,
-            file_link: fileLink.href,
-            file_unique_id: photo.file_unique_id
-        });
+    
+    try {
+        // Handle photos
+        if (ctx.message.photo) {
+            // Get the highest resolution photo
+            const photo = ctx.message.photo[ctx.message.photo.length - 1];
+            const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+            files.push({
+                type: 'image',
+                file_id: photo.file_id,
+                file_link: fileLink.href,
+                file_unique_id: photo.file_unique_id,
+                file_name: `photo_${photo.file_id}.jpg`
+            });
+        }
+        
+        // Handle documents (PDFs, images, videos, etc.)
+        if (ctx.message.document) {
+            const doc = ctx.message.document;
+            const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+            files.push({
+                type: doc.mime_type && doc.mime_type.startsWith('image/') ? 'image' : doc.mime_type || 'document',
+                file_id: doc.file_id,
+                file_link: fileLink.href,
+                file_name: doc.file_name || `document_${doc.file_id}`,
+                mime_type: doc.mime_type || 'application/octet-stream',
+                file_size: doc.file_size
+            });
+        }
+        
+        // Handle videos
+        if (ctx.message.video) {
+            const video = ctx.message.video;
+            const fileLink = await ctx.telegram.getFileLink(video.file_id);
+            files.push({
+                type: 'video',
+                file_id: video.file_id,
+                file_link: fileLink.href,
+                mime_type: video.mime_type || 'video/mp4',
+                file_name: `video_${video.file_id}.mp4`,
+                duration: video.duration,
+                width: video.width,
+                height: video.height
+            });
+        }
+        
+        // Handle audio
+        if (ctx.message.audio) {
+            const audio = ctx.message.audio;
+            const fileLink = await ctx.telegram.getFileLink(audio.file_id);
+            files.push({
+                type: 'audio',
+                file_id: audio.file_id,
+                file_link: fileLink.href,
+                mime_type: audio.mime_type || 'audio/mpeg',
+                file_name: audio.file_name || `audio_${audio.file_id}.mp3`,
+                duration: audio.duration
+            });
+        }
+        
+        // Handle voice messages
+        if (ctx.message.voice) {
+            const voice = ctx.message.voice;
+            const fileLink = await ctx.telegram.getFileLink(voice.file_id);
+            files.push({
+                type: 'voice',
+                file_id: voice.file_id,
+                file_link: fileLink.href,
+                mime_type: voice.mime_type || 'audio/ogg',
+                file_name: `voice_${voice.file_id}.ogg`,
+                duration: voice.duration
+            });
+        }
+        
+        // Handle stickers as images
+        if (ctx.message.sticker) {
+            const sticker = ctx.message.sticker;
+            const fileLink = await ctx.telegram.getFileLink(sticker.file_id);
+            files.push({
+                type: 'image',
+                file_id: sticker.file_id,
+                file_link: fileLink.href,
+                file_name: `sticker_${sticker.file_id}.webp`,
+                mime_type: 'image/webp'
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error extracting files:', error);
     }
-    // Handle documents (PDFs, videos, etc.)
-    if (ctx.message.document) {
-        const doc = ctx.message.document;
-        const fileLink = await ctx.telegram.getFileLink(doc.file_id);
-        files.push({
-            type: doc.mime_type.startsWith('image/') ? 'image' : doc.mime_type,
-            file_id: doc.file_id,
-            file_link: fileLink.href,
-            file_name: doc.file_name,
-            mime_type: doc.mime_type
-        });
-    }
-    // Handle videos
-    if (ctx.message.video) {
-        const video = ctx.message.video;
-        const fileLink = await ctx.telegram.getFileLink(video.file_id);
-        files.push({
-            type: 'video',
-            file_id: video.file_id,
-            file_link: fileLink.href,
-            mime_type: video.mime_type
-        });
-    }
-    // Handle audio
-    if (ctx.message.audio) {
-        const audio = ctx.message.audio;
-        const fileLink = await ctx.telegram.getFileLink(audio.file_id);
-        files.push({
-            type: 'audio',
-            file_id: audio.file_id,
-            file_link: fileLink.href,
-            mime_type: audio.mime_type
-        });
-    }
-    // Handle voice
-    if (ctx.message.voice) {
-        const voice = ctx.message.voice;
-        const fileLink = await ctx.telegram.getFileLink(voice.file_id);
-        files.push({
-            type: 'voice',
-            file_id: voice.file_id,
-            file_link: fileLink.href,
-            mime_type: voice.mime_type
-        });
-    }
+    
     return files;
 }
 
-// Enhanced message handler for all content types
-bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => {
+// Enhanced message handler for all content types including stickers
+bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], async (ctx) => {
     const chatId = ctx.chat.id;
     const userId = ctx.from.id;
     const messageText = ctx.message.text || '';
@@ -142,8 +176,7 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
             greeted: false, 
             ready: false,
             questionsAsked: 0, // Track number of clarifying questions asked
-            maxQuestions: 4,   // Maximum questions allowed
-            waitingForCustomAge: false // Flag for custom age input
+            maxQuestions: 4    // Maximum questions allowed
         };
     }
     const session = userSessions[userId];
@@ -156,7 +189,6 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
-        session.waitingForCustomAge = false;
         await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
         await sendPetDetailPrompt(ctx, session);
         return;
@@ -170,24 +202,9 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
-        session.waitingForCustomAge = false;
         await ctx.reply('Starting fresh! Let\'s begin again.');
         await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
         await sendPetDetailPrompt(ctx, session);
-        return;
-    }
-
-    // Handle custom age input
-    if (session.waitingForCustomAge) {
-        const customAge = messageText.trim();
-        if (customAge) {
-            session.petDetails.pet_age = customAge;
-            session.petDetailStep++;
-            session.waitingForCustomAge = false;
-            await sendPetDetailPrompt(ctx, session);
-        } else {
-            await ctx.reply('Please enter a valid age for your pet.');
-        }
         return;
     }
 
@@ -211,19 +228,34 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice'], async (ctx) => 
 
     // After pet details, start main conversation
     try {
-        // Add multimodal input to chat history
+        // Add user message with files to chat history 
         const userParts = [];
-        if (messageText) userParts.push({ text: messageText });
+        if (messageText && messageText.trim()) {
+            userParts.push({ text: messageText.trim() });
+        }
+        
+        // Add file information to user parts
         if (files.length > 0) {
             for (const file of files) {
-                userParts.push({ file });
+                userParts.push({ file: file });
+                console.log(`Processing file: ${file.type} - ${file.file_link}`);
             }
         }
+        
+        // Add to chat history if we have content
         if (userParts.length > 0) {
             session.chatHistory.push({ role: 'user', parts: userParts });
         }
-        // Call chatbot.py with full context
+        
+        // Call chatbot.py with full context including files
         const response = await getChatbotResponse(userId, messageText, files);
+        
+        // Check for empty response
+        if (!response || response.trim() === '') {
+            await ctx.reply('I apologize, but I couldn\'t generate a proper response. Please try rephrasing your question or try uploading the image again.');
+            return;
+        }
+        
         await ctx.reply(response, { disable_web_page_preview: true });
     } catch (error) {
         console.error('Error processing request:', error);
@@ -252,14 +284,29 @@ async function sendPetDetailPrompt(ctx, session) {
         // All details collected
         session.ready = true;
         console.log('All pet details collected:', session.petDetails);
-        await ctx.reply(`Great! Here's what I know about your pet:
-🐾 Name: ${session.petDetails.pet_name}
-🐕/🐱 Type: ${session.petDetails.pet_type}
-📅 Age: ${session.petDetails.pet_age}
-🏷️ Breed: ${session.petDetails.pet_breed}
-♂️/♀️ Gender: ${session.petDetails.pet_gender}
-⚖️ Weight: ${session.petDetails.pet_weight}`);
-        await ctx.reply('How can I help you today? Please describe your pet\'s issue or send any relevant files (images, videos, PDFs, etc.).');
+        
+        // Create comprehensive summary with proper formatting
+        const petData = session.petDetails;
+        const summary = `🎉 **Pet Registration Complete!**
+
+📝 **Your Pet's Information:**
+🐾 **Name:** ${petData.pet_name || 'Not provided'}
+🐕/🐱 **Type:** ${petData.pet_type || 'Not provided'}
+♂️/♀️ **Gender:** ${petData.pet_gender || 'Not provided'}
+📅 **Age:** ${petData.pet_age || 'Not provided'}
+🏷️ **Breed:** ${petData.pet_breed || 'Not provided'}
+⚖️ **Weight:** ${petData.pet_weight || 'Not provided'}
+
+✅ **Ready for Consultation!**
+I'm Dr. Paws, your AI veterinary assistant. You can now:
+• Ask me about any health concerns
+• Send photos/videos of symptoms
+• Upload medical documents
+• Get expert advice and recommendations
+
+💡 **How can I help ${petData.pet_name || 'your pet'} today?**`;
+        
+        await ctx.reply(summary, { parse_mode: 'Markdown' });
         return;
     }
 
@@ -272,31 +319,13 @@ async function sendPetDetailPrompt(ctx, session) {
         
         console.log(`Creating buttons for ${currentField.key} with options:`, currentField.options);
         
-        if (currentField.key === 'pet_age') {
-            // Create age buttons in rows of 5
-            const ageButtons = [];
-            for (let i = 0; i < currentField.options.length; i++) {
-                const callbackData = `${currentField.key}_${currentField.options[i].replace(/\s/g, '_')}`;
-                ageButtons.push({
-                    text: currentField.options[i],
-                    callback_data: callbackData
-                });
-                
-                // Add row every 5 buttons or at the end
-                if ((i + 1) % 5 === 0 || i === currentField.options.length - 1) {
-                    keyboard.inline_keyboard.push([...ageButtons]);
-                    ageButtons.length = 0; // Clear the array
-                }
-            }
-        } else {
-            // For other button types (pet_type, pet_gender), create single row
-            keyboard.inline_keyboard.push(
-                currentField.options.map(option => ({
-                    text: option,
-                    callback_data: `${currentField.key}_${option}`
-                }))
-            );
-        }
+        // Create single row for all button types
+        keyboard.inline_keyboard.push(
+            currentField.options.map(option => ({
+                text: option,
+                callback_data: `${currentField.key}_${option}`
+            }))
+        );
         
         console.log('Generated keyboard:', JSON.stringify(keyboard, null, 2));
         
@@ -322,8 +351,7 @@ bot.on('callback_query', async (ctx) => {
             greeted: false, 
             ready: false,
             questionsAsked: 0,
-            maxQuestions: 4,
-            waitingForCustomAge: false
+            maxQuestions: 4
         };
     }
     
@@ -331,34 +359,27 @@ bot.on('callback_query', async (ctx) => {
     
     // Parse callback data (format: fieldKey_value)
     const [fieldKey, ...valueParts] = data.split('_');
-    const rawValue = valueParts.join('_');
-    const displayValue = valueParts.join(' '); // Join back with spaces for display
+    const selectedValue = valueParts.join('_'); // Join back in case value contains underscores
     
-    console.log(`Parsed: fieldKey=${fieldKey}, rawValue=${rawValue}, displayValue=${displayValue}`);
+    console.log(`Parsed: fieldKey=${fieldKey}, selectedValue=${selectedValue}`);
     
     try {
-        if (fieldKey === 'pet_age' && rawValue === 'Custom') {
-            session.waitingForCustomAge = true;
-            await ctx.answerCbQuery();
-            await ctx.editMessageText('Please type your pet\'s age (e.g., "6 months", "2.5 years"):');
-        } else {
-            // Store the selected value
-            session.petDetails[fieldKey] = displayValue;
-            session.petDetailStep++;
-            
-            console.log(`Stored ${fieldKey} = ${displayValue}, moving to step ${session.petDetailStep}`);
-            
-            await ctx.answerCbQuery();
-            
-            // Find the current field to get the prompt
-            const currentField = PET_DETAIL_FIELDS.find(f => f.key === fieldKey);
-            if (currentField) {
-                await ctx.editMessageText(`${currentField.prompt}\n✅ Selected: ${displayValue}`);
-            }
-            
-            // Move to next step
-            await sendPetDetailPrompt(ctx, session);
+        // Store the selected value (use selectedValue directly, not displayValue)
+        session.petDetails[fieldKey] = selectedValue;
+        session.petDetailStep++;
+        
+        console.log(`Stored ${fieldKey} = ${selectedValue}, moving to step ${session.petDetailStep}`);
+        
+        await ctx.answerCbQuery();
+        
+        // Find the current field to get the prompt
+        const currentField = PET_DETAIL_FIELDS.find(f => f.key === fieldKey);
+        if (currentField) {
+            await ctx.editMessageText(`${currentField.prompt}\n✅ Selected: ${selectedValue}`);
         }
+        
+        // Move to next step
+        await sendPetDetailPrompt(ctx, session);
     } catch (error) {
         console.error('Error handling callback query:', error);
         await ctx.answerCbQuery('An error occurred. Please try again.');
@@ -373,7 +394,11 @@ async function getChatbotResponse(userId, messageText, files = []) {
             maxQuestions: 4
         };
     }
-    const { chatHistory, petDetails, questionsAsked, maxQuestions } = userSessions[userId];
+    const session = userSessions[userId];
+    const { chatHistory, petDetails, questionsAsked, maxQuestions } = session;
+    
+    // NOTE: Chat history is now managed in the main message handler
+    // Do not add user message here to avoid duplication
     
     return new Promise((resolve, reject) => {
         // Use full path to python executable if needed
@@ -427,13 +452,17 @@ async function getChatbotResponse(userId, messageText, files = []) {
                     console.error(`Error from chatbot.py: ${result.error}`);
                     reject(new Error(`Chatbot error: ${result.error}`));
                 } else {
+                    // Check if response is empty
+                    if (!result.response || result.response.trim() === '') {
+                        reject(new Error('Empty response received from chatbot'));
+                        return;
+                    }
+                    
                     // Add bot's response to chat history
                     chatHistory.push({ role: 'model', parts: [{ text: result.response }] });
                     
-                    // Check if this response contains a question (and we haven't reached max questions)
-                    if (result.response.includes('?') && questionsAsked < maxQuestions) {
-                        userSessions[userId].questionsAsked++;
-                    }
+                    // Update questions asked count in session
+                    userSessions[userId].questionsAsked = questionsAsked;
                     
                     resolve(result.response);
                 }
@@ -454,10 +483,18 @@ async function getChatbotResponse(userId, messageText, files = []) {
         // Send data to chatbot.py via stdin
         try {
             const inputData = JSON.stringify({
+                message: messageText || "",
                 pet_details: petDetails,
                 chat_history: chatHistory,
+                files: files, // Include files in the data sent to Python
                 questions_asked: questionsAsked,
                 max_questions: maxQuestions
+            });
+            console.log('Sending to Python:', {
+                message: messageText || "",
+                pet_details: petDetails,
+                files_count: files.length,
+                chat_history_length: chatHistory.length
             });
             pythonProcess.stdin.write(inputData);
             pythonProcess.stdin.end();
