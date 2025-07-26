@@ -13,86 +13,40 @@ env.load_dotenv()
 # Configure the generative AI model
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Global variables for pet details (used by Streamlit UI)
-pet_name = ""
-pet_type = ""
-pet_age = ""
-pet_breed = ""
-pet_gender = ""
-pet_weight = ""
+# Single consistent system prompt
+SYSTEM_PROMPT = """
+You are an expert, helpful and friendly veterinary doctor who has 20+ years of experience. You have many great achievements and awards in the field of pet health and understand pet feelings deeply.
 
-def get_system_prompt(pet_name, pet_type, pet_age, pet_breed, pet_gender="", pet_weight="", questions_asked=0, max_questions=4, has_images=False):
-    """Creates a system prompt based on the current pet details and question tracking."""
-    questions_remaining = max_questions - questions_asked
-    
-    if questions_remaining > 0:
-        question_instruction = f"""
-CONVERSATION CONTEXT:
-- This is an ongoing consultation about {pet_name}
-- You have asked {questions_asked} questions so far
-- You can ask {questions_remaining} more questions maximum
-- IMPORTANT: Ask ONLY ONE simple, direct question per response
-- Do NOT provide any analysis, advice, or explanations yet
-- Do NOT give any assessment or recommendations yet
-- Simply ask your question and wait for the answer
-- Build upon previous answers to ask follow-up questions
-- After all {max_questions} questions are asked, then provide your analysis
-"""
-    else:
-        question_instruction = f"""
-CONVERSATION CONTEXT:
-- This is an ongoing consultation about {pet_name}
-- You have already asked all {max_questions} questions
-- NOW provide your complete analysis and recommendations
-- Base your advice on ALL the information gathered during this conversation
-- Do NOT ask any more questions - only provide your final assessment
-"""
-    
-    image_instruction = ""
-    if has_images:
-        image_instruction = """
-VISUAL INFORMATION:
-- The owner has provided images/media
-- Analyze them carefully for symptoms, conditions, or relevant details
-- Describe what you see in the images and how it relates to the pet's health
-- Reference the images in your questions or recommendations
-"""
-    
-    return f"""
-You are Dr. Paws, an experienced veterinarian conducting a consultation with a pet owner.
+Your task is to conduct a professional veterinary consultation and friendly with pet owners. You will ask a maximum of 4 questions to gather essential information about the pet's condition, then provide your assessment and recommendations.
 
-CONSULTATION STYLE:
-- This is a continuing conversation - remember what has been discussed
-- Speak naturally like a caring veterinarian 
-- Use {pet_name}'s name in your questions
-- Reference previous symptoms or information the owner has shared
+CONSULTATION PROCESS:
+1. Ask ONE question at a time (maximum 4 questions total)
+2. Each question should be 1-2 lines only
+3. Wait for the owner's response before asking the next question
+4. Build upon previous answers to ask relevant follow-up questions
+5. After all 4 questions (or fewer if sufficient information is gathered), provide your complete assessment
 
-{question_instruction}
-
-{image_instruction}
+QUESTION GUIDELINES:
+- Keep questions short and direct (1-2 lines maximum)
+- Ask about symptoms, duration, behavior changes, eating habits, etc.
+- Reference the pet's name when asking questions
+- Ask logical follow-ups based on previous answers
 
 RESPONSE FORMAT:
-- For questions (when questions_asked < {max_questions}): Ask ONLY ONE direct question. No analysis, no advice, no explanations - just the question.
-- For final assessment (when questions_asked = {max_questions}):
-  **My Assessment:** [Clear diagnosis/assessment based on ALL conversation history]
-  **What I Recommend:** [Specific care advice based on everything discussed]
+- For questions: Ask ONLY ONE direct question. No analysis or advice yet.
+- For responses: Use the pet's name and be caring and professional
+- Responses other than final assessment should be concise and focused on the pet's condition
+- For final assessment: Provide structured response with:
+  **My Assessment:** [Clear diagnosis/assessment based on all information] in 4 lines at maximum
+  **What I Recommend:** [Specific care advice and next steps] in 4 lines at maximum in the format of bullet points
+- If and only if and only if the issue is serious, tell "Emergency Alert: "⚠️ URGENT: Based on the symptoms you've described, your pet needs immediate veterinary attention. PLease consult your local vet as soon as possible."
 
-Pet Details:
-- Name: {pet_name}
-- Type: {pet_type}
-- Age: {pet_age}
-- Breed: {pet_breed}
-- Gender: {pet_gender}
-- Weight: {pet_weight}
-
-QUESTION GUIDELINES (Only when asking questions):
-- Ask ONE simple, direct question
-- Reference what the owner already told you: "You mentioned [previous symptom]..."
-- Ask logical follow-ups: "Since {pet_name} is vomiting, is there any blood in it?"
-- Show continuity: "Earlier you said {pet_name} wasn't eating well..."
-- NO analysis or recommendations until all questions are complete
-
-Always end final recommendations with: "If you're concerned or if things don't improve, I'd recommend seeing your local vet for a hands-on examination."
+IMPORTANT RULES:
+- Never ask more than 4 questions total
+- Always ask questions one by one
+- Do NOT provide analysis or recommendations until questioning is complete
+- Always end final recommendations with: "If you're concerned or if things don't improve, I'd recommend seeing your local vet for a hands-on examination."
+- Be caring, professional, and use the pet's name throughout the conversation
 """
 
 def download_and_process_image(file_url):
@@ -123,62 +77,53 @@ def download_and_process_image(file_url):
         print(f"Error processing image from {file_url}: {str(e)}", file=sys.stderr)
         return None
 
-def get_response(chat_history_or_pet_details, chat_history=None, files=None):
-    """
-    Gets a response from the generative AI model.
-    Can be called in two ways:
-    1. get_response(chat_history) - Uses global pet variables (for Streamlit UI)
-    2. get_response(pet_details, chat_history, files) - Uses provided pet details (for CLI)
-    """
+def get_response(pet_details, chat_history, files=None):
+    """Gets a response from the generative AI model."""
     try:
-        # Determine which calling pattern is being used
-        if chat_history is None:
-            # Called from Streamlit UI with only chat_history
-            chat_history = chat_history_or_pet_details
-            current_pet_name = pet_name
-            current_pet_type = pet_type
-            current_pet_age = pet_age
-            current_pet_breed = pet_breed
-            current_pet_gender = pet_gender
-            current_pet_weight = pet_weight
-            questions_asked = 0  # Default for Streamlit UI
-            max_questions = 4
-            files = files or []
-        else:
-            # Called from CLI with pet_details and chat_history
-            pet_details = chat_history_or_pet_details
-            current_pet_name = pet_details.get("pet_name", "")
-            current_pet_type = pet_details.get("pet_type", "")
-            current_pet_age = pet_details.get("pet_age", "")
-            current_pet_breed = pet_details.get("pet_breed", "")
-            current_pet_gender = pet_details.get("pet_gender", "")
-            current_pet_weight = pet_details.get("pet_weight", "")
-            questions_asked = pet_details.get("questions_asked", 0)
-            max_questions = pet_details.get("max_questions", 4)
-            files = files or []
+        # Extract pet details
+        current_pet_name = pet_details.get("pet_name", "")
+        current_pet_type = pet_details.get("pet_type", "")
+        current_pet_age = pet_details.get("pet_age", "")
+        current_pet_breed = pet_details.get("pet_breed", "")
+        current_pet_gender = pet_details.get("pet_gender", "")
+        current_pet_weight = pet_details.get("pet_weight", "")
+        questions_asked = pet_details.get("questions_asked", 0)
+        max_questions = pet_details.get("max_questions", 4)
+        files = files or []
 
         if not chat_history:
-            # For initial message with no chat history, create a basic greeting
             chat_history = []
 
         # Check if we have images/files to process
         has_images = any(f.get('type') == 'image' for f in files) if files else False
 
-        # Get the system prompt with question tracking and image support
-        system_prompt = get_system_prompt(current_pet_name, current_pet_type, current_pet_age, current_pet_breed, current_pet_gender, current_pet_weight, questions_asked, max_questions, has_images)
-        
         # Prepare the conversation for the API call
         contents = []
         
-        # Add system prompt only if this is the first message in the conversation
+        # Add system prompt and pet details for every conversation
+        pet_info = f"""
+Pet Information:
+- Name: {current_pet_name}
+- Type: {current_pet_type}
+- Age: {current_pet_age}
+- Breed: {current_pet_breed}
+- Gender: {current_pet_gender}
+- Weight: {current_pet_weight}
+
+Current Status: Questions asked so far: {questions_asked}/{max_questions}
+{f"Images provided: Yes" if has_images else ""}
+"""
+        
+        contents.append({
+            "role": "user",
+            "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{pet_info}"}]
+        })
+        
+        # Add initial greeting if this is the first message
         if not chat_history or len(chat_history) == 0:
             contents.append({
-                "role": "user",
-                "parts": [{"text": f"System instruction: {system_prompt}"}]
-            })
-            contents.append({
                 "role": "model",
-                "parts": [{"text": f"Hello! I'm Dr. Paws. I'll ask you {max_questions} questions about {current_pet_name} to help assess their condition. Let's start:"}]
+                "parts": [{"text": f"Hello! I'm Dr. Paws, your veterinary consultant. I'd like to help assess {current_pet_name}'s condition. I'll ask you a few questions to better understand what's going on."}]
             })
             
             # Add a default user message if none provided
@@ -186,23 +131,6 @@ def get_response(chat_history_or_pet_details, chat_history=None, files=None):
             contents.append({
                 "role": "user",
                 "parts": [{"text": initial_message}]
-            })
-        
-        # For ongoing conversations, add a context reminder instead of full system prompt
-        elif len(chat_history) > 0:
-            context_reminder = f"""
-            Context: Ongoing consultation for {current_pet_name} ({current_pet_type}, {current_pet_age}).
-            Questions asked so far: {questions_asked}/{max_questions}.
-            {f"Images provided: Yes" if has_images else ""}
-            Continue the consultation naturally, building on previous conversation.
-            """
-            contents.append({
-                "role": "user",
-                "parts": [{"text": context_reminder}]
-            })
-            contents.append({
-                "role": "model",
-                "parts": [{"text": "I'll continue our consultation, keeping in mind everything we've discussed so far."}]
             })
         
         # Convert chat history to proper format with multimodal support
@@ -271,10 +199,10 @@ if __name__ == "__main__":
             
         pet_details = data.get("pet_details")
         chat_history = data.get("chat_history", [])
-        files = data.get("files", [])  # Extract files from input
+        files = data.get("files", [])
         questions_asked = data.get("questions_asked", 0)
         max_questions = data.get("max_questions", 4)
-        message = data.get("message", "")  # Extract message from input
+        message = data.get("message", "")
 
         if not isinstance(pet_details, dict):
             print(json.dumps({"error": "Invalid 'pet_details' format. Expected a dictionary."}), file=sys.stderr)

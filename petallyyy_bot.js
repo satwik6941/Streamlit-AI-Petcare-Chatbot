@@ -2,12 +2,14 @@
 const { Telegraf } = require('telegraf');
 const { spawn } = require('child_process');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 
 require('dotenv').config();
 
-const token = process.env.TELEGRAM_BOT_TOKEN;
+const token = process.env.TELEGRAM_BOT_TOKEN_1;
 if (!token) {
-    console.error('TELEGRAM_BOT_TOKEN is not set in environment variables. Exiting.');
+    console.error('TELEGRAM_BOT_TOKEN_1 is not set in environment variables. Exiting.');
     process.exit(1);
 }
 
@@ -64,6 +66,28 @@ function isDebugCommand(text) {
 function isExitCommand(text) {
     if (!text) return false;
     return EXIT_COMMANDS.some(e => text.trim().toLowerCase() === e);
+}
+
+// Helper to read terms content
+function getTermsContent() {
+    try {
+        const termsPath = path.join(__dirname, 'terms.txt');
+        return fs.readFileSync(termsPath, 'utf8');
+    } catch (error) {
+        console.error('Error reading terms.txt:', error);
+        return 'Terms of Service content not available.';
+    }
+}
+
+// Helper to read disclaimer content
+function getDisclaimerContent() {
+    try {
+        const disclaimerPath = path.join(__dirname, 'disclaimer.txt');
+        return fs.readFileSync(disclaimerPath, 'utf8');
+    } catch (error) {
+        console.error('Error reading disclaimer.txt:', error);
+        return 'Disclaimer content not available.';
+    }
 }
 
 // Helper to get next missing pet detail
@@ -171,6 +195,60 @@ async function extractFiles(ctx) {
     return files;
 }
 
+// Function to show terms with Accept/Reject buttons
+async function showTermsWithButtons(ctx) {
+    const termsContent = getTermsContent();
+    
+    // Split the content into chunks if it's too long for Telegram
+    const maxLength = 4000; // Telegram message limit is 4096 characters
+    
+    if (termsContent.length <= maxLength) {
+        await ctx.reply(termsContent, {
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: 'Accept', callback_data: 'terms_accept' },
+                    { text: 'Reject', callback_data: 'terms_reject' }
+                ]]
+            }
+        });
+    } else {
+        // Split into multiple messages
+        const chunks = [];
+        for (let i = 0; i < termsContent.length; i += maxLength) {
+            chunks.push(termsContent.substring(i, i + maxLength));
+        }
+        
+        // Send all chunks except the last one
+        for (let i = 0; i < chunks.length - 1; i++) {
+            await ctx.reply(chunks[i]);
+        }
+        
+        // Send the last chunk with buttons
+        await ctx.reply(chunks[chunks.length - 1], {
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: 'Accept', callback_data: 'terms_accept' },
+                    { text: 'Reject', callback_data: 'terms_reject' }
+                ]]
+            }
+        });
+    }
+}
+
+// Function to show disclaimer with Accept/Reject buttons
+async function showDisclaimerWithButtons(ctx) {
+    const disclaimerContent = getDisclaimerContent();
+    
+    await ctx.reply(disclaimerContent, {
+        reply_markup: {
+            inline_keyboard: [[
+                { text: 'Accept', callback_data: 'disclaimer_accept' },
+                { text: 'Reject', callback_data: 'disclaimer_reject' }
+            ]]
+        }
+    });
+}
+
 // Enhanced message handler for all content types including stickers
 bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], async (ctx) => {
     const chatId = ctx.chat.id;
@@ -195,20 +273,54 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
             greeted: false, 
             ready: false,
             questionsAsked: 0, // Track number of clarifying questions asked
-            maxQuestions: 4    // Maximum questions allowed
+            maxQuestions: 4,   // Maximum questions allowed
+            termsAccepted: false,
+            disclaimerAccepted: false,
+            currentStep: 'initial' // Can be: 'initial', 'showing_terms', 'showing_disclaimer', 'pet_details', 'ready'
         };
     }
     const session = userSessions[userId];
 
-    // Greeting and pet details collection flow
-    if (isGreeting(messageText) && !session.greeted) {
+    // Check if user has accepted both terms and disclaimer before proceeding
+    if (!session.termsAccepted || !session.disclaimerAccepted) {
+        // If it's a greeting and user hasn't started the acceptance flow
+        if (isGreeting(messageText) && session.currentStep === 'initial') {
+            // Send welcome message
+            await ctx.reply('Hi! I\'m PetAlly, AI Assistant 🐾 Your virtual pet assistant. I\'m here to help with your pet\'s health and behavior questions. Let\'s start by setting up your pet\'s profile.');
+            
+            // Start terms acceptance flow
+            session.currentStep = 'showing_terms';
+            await showTermsWithButtons(ctx);
+            return;
+        }
+        
+        // If user tries to send any other message without accepting terms
+        if (!isGreeting(messageText) && session.currentStep === 'initial') {
+            await ctx.reply('Please say "hi" or "/start" to begin and accept our terms to proceed.');
+            return;
+        }
+        
+        // If user is in the middle of terms/disclaimer flow but hasn't completed it
+        if (session.currentStep === 'showing_terms' || session.currentStep === 'showing_disclaimer') {
+            await ctx.reply('Please accept our terms and disclaimer to proceed.');
+            return;
+        }
+        
+        // If user has not accepted both, show the rejection message
+        await ctx.reply('Please accept our terms to proceed');
+        return;
+    }
+
+    // Greeting and pet details collection flow (only after terms acceptance)
+    if (isGreeting(messageText) && !session.greeted && session.termsAccepted && session.disclaimerAccepted) {
         session.greeted = true;
         session.petDetails = {};
         session.petDetailStep = 0;
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
-        await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.\n\n💬 **Tip:** You can type "exit" or "quit" anytime to end our conversation.');
+        session.currentStep = 'pet_details';
+        await ctx.reply('Great! Now let\'s collect some information about your pet.');
         await sendPetDetailPrompt(ctx, session);
         return;
     }
@@ -221,9 +333,13 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
+        session.termsAccepted = false;
+        session.disclaimerAccepted = false;
+        session.currentStep = 'initial';
         await ctx.reply('Starting fresh! Let\'s begin again.');
-        await ctx.reply('Hello! I\'m Dr. Paws, your friendly pet care assistant.');
-        await sendPetDetailPrompt(ctx, session);
+        await ctx.reply('Hi! I\'m PetAlly, AI Assistant 🐾 Your virtual pet assistant. I\'m here to help with your pet\'s health and behavior questions. Let\'s start by setting up your pet\'s profile.');
+        session.currentStep = 'showing_terms';
+        await showTermsWithButtons(ctx);
         return;
     }
 
@@ -231,9 +347,12 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
     if (isDebugCommand(messageText)) {
         const debugInfo = `🔍 **Session Debug Info:**
 **User ID:** ${userId}
+**Current Step:** ${session.currentStep}
+**Terms Accepted:** ${session.termsAccepted}
+**Disclaimer Accepted:** ${session.disclaimerAccepted}
 **Greeted:** ${session.greeted}
 **Ready:** ${session.ready}
-**Step:** ${session.petDetailStep}/${PET_DETAIL_FIELDS.length}
+**Pet Detail Step:** ${session.petDetailStep}/${PET_DETAIL_FIELDS.length}
 **Questions Asked:** ${session.questionsAsked}/${session.maxQuestions}
 
 **Pet Details:**
@@ -259,6 +378,9 @@ If you need help again, just say "hi" to start a new consultation.`;
         session.ready = false;
         session.questionsAsked = 0;
         session.chatHistory = [];
+        session.termsAccepted = false;
+        session.disclaimerAccepted = false;
+        session.currentStep = 'initial';
         
         await ctx.reply(exitMessage);
         return;
@@ -274,10 +396,9 @@ If you need help again, just say "hi" to start a new consultation.`;
                     session.petDetails[currentField.key] = messageText.trim();
                     session.petDetailStep++;
                     
-                    console.log(`✅ Text input stored: ${currentField.key} = ${messageText.trim()}`);
-                    console.log(`📊 Current pet details:`, session.petDetails);
-                    
-                    await sendPetDetailPrompt(ctx, session);
+                    console.log(`Text input stored: ${currentField.key} = ${messageText.trim()}`);
+                    console.log(`Current pet details:`, session.petDetails);
+                                       await sendPetDetailPrompt(ctx, session);
                     return;
                 } else {
                     await ctx.reply('Please provide the information requested above.');
@@ -357,7 +478,7 @@ async function sendPetDetailPrompt(ctx, session) {
         }
         
         if (missingFields.length > 0) {
-            console.log('❌ Missing fields detected:', missingFields);
+            console.log('Missing fields detected:', missingFields);
             console.log('🔄 Restarting registration from missing field');
             // Find the first missing field and restart from there
             const firstMissingIndex = PET_DETAIL_FIELDS.findIndex(f => missingFields.includes(f.key));
@@ -367,7 +488,8 @@ async function sendPetDetailPrompt(ctx, session) {
         }
         
         session.ready = true;
-        console.log('✅ All pet details collected successfully:', session.petDetails);
+        session.currentStep = 'ready';
+        console.log('All pet details collected successfully:', session.petDetails);
         
         // Create comprehensive summary with proper formatting
         const petData = session.petDetails;
@@ -381,7 +503,7 @@ async function sendPetDetailPrompt(ctx, session) {
 🏷️ **Breed:** ${petData.pet_breed}
 ⚖️ **Weight:** ${petData.pet_weight}
 
-✅ **Ready for Consultation!**
+**Ready for Consultation!**
 Hello! I'm Dr. Paws, your veterinary consultant. I'm here to help with any concerns about ${petData.pet_name}.
 
 💡 **What would you like to discuss about ${petData.pet_name} today?**
@@ -436,15 +558,66 @@ bot.on('callback_query', async (ctx) => {
             greeted: false, 
             ready: false,
             questionsAsked: 0,
-            maxQuestions: 4
+            maxQuestions: 4,
+            termsAccepted: false,
+            disclaimerAccepted: false,
+            currentStep: 'initial'
         };
     }
     
     const session = userSessions[userId];
     
-    // Parse callback data (format: fieldKey_value)
-    // Handle cases where fieldKey contains underscores (like pet_type, pet_gender)
-    let fieldKey, selectedValue;
+    try {
+        // Handle terms and disclaimer acceptance
+        if (data === 'terms_accept') {
+            session.termsAccepted = true;
+            await ctx.answerCbQuery('Terms accepted!');
+            await ctx.reply('Terms of Service accepted!');
+            
+            // Now show disclaimer
+            session.currentStep = 'showing_disclaimer';
+            await showDisclaimerWithButtons(ctx);
+            return;
+        }
+        
+        if (data === 'terms_reject') {
+            await ctx.answerCbQuery('Terms rejected');
+            await ctx.reply('You must accept the Terms of Service to use this bot. Say "hi" to start again.');
+            // Reset session
+            session.termsAccepted = false;
+            session.disclaimerAccepted = false;
+            session.currentStep = 'initial';
+            return;
+        }
+        
+        if (data === 'disclaimer_accept') {
+            session.disclaimerAccepted = true;
+            await ctx.answerCbQuery('Disclaimer accepted!');
+            await ctx.reply('Medical Disclaimer accepted!');
+            
+            // Both terms and disclaimer accepted, start pet details collection
+            if (session.termsAccepted && session.disclaimerAccepted) {
+                session.currentStep = 'pet_details';
+                session.greeted = true;
+                await ctx.reply('Great! Now let\'s collect some information about your pet.');
+                await sendPetDetailPrompt(ctx, session);
+            }
+            return;
+        }
+        
+        if (data === 'disclaimer_reject') {
+            await ctx.answerCbQuery('Disclaimer rejected');
+            await ctx.reply('You must accept the Medical Disclaimer to use this bot. Say "hi" to start again.');
+            // Reset session
+            session.termsAccepted = false;
+            session.disclaimerAccepted = false;
+            session.currentStep = 'initial';
+            return;
+        }
+    
+        // Parse callback data for pet details (format: fieldKey_value)
+        // Handle cases where fieldKey contains underscores (like pet_type, pet_gender)
+        let fieldKey, selectedValue;
     
     // Check if this matches any of our known field keys
     const knownFieldKeys = PET_DETAIL_FIELDS.map(f => f.key);
@@ -472,14 +645,12 @@ bot.on('callback_query', async (ctx) => {
     console.log(`Raw callback data: ${data}`);
     console.log(`Known field keys: ${knownFieldKeys.join(', ')}`);
     
-    try {
         // Verify we're on the correct step for this field
         const expectedField = PET_DETAIL_FIELDS[session.petDetailStep];
         if (!expectedField || expectedField.key !== fieldKey) {
-            console.log(`❌ Mismatch: Expected ${expectedField?.key}, got ${fieldKey}`);
-            console.log(`📊 Session state - Step: ${session.petDetailStep}, Ready: ${session.ready}, Greeted: ${session.greeted}`);
-            
-            // If user is somehow out of sync, let them know what step they should be on
+            console.log(`Mismatch: Expected ${expectedField?.key}, got ${fieldKey}`);
+            console.log(`Session state - Step: ${session.petDetailStep}, Ready: ${session.ready}, Greeted: ${session.greeted}`);
+                       // If user is somehow out of sync, let them know what step they should be on
             if (expectedField) {
                 await ctx.answerCbQuery(`Please complete step ${session.petDetailStep + 1}: ${expectedField.prompt}`);
             } else {
@@ -492,16 +663,16 @@ bot.on('callback_query', async (ctx) => {
         session.petDetails[fieldKey] = selectedValue;
         session.petDetailStep++;
         
-        console.log(`✅ Successfully stored ${fieldKey} = ${selectedValue}`);
-        console.log(`📊 Current pet details:`, session.petDetails);
-        console.log(`➡️ Moving to step ${session.petDetailStep}`);
+        console.log(`Successfully stored ${fieldKey} = ${selectedValue}`);
+        console.log(`Current pet details:`, session.petDetails);
+        console.log(`Moving to step ${session.petDetailStep}`);
         
         await ctx.answerCbQuery();
         
         // Find the current field to get the prompt
         const currentField = PET_DETAIL_FIELDS.find(f => f.key === fieldKey);
         if (currentField) {
-            await ctx.editMessageText(`${currentField.prompt}\n✅ Selected: ${selectedValue}`);
+            await ctx.editMessageText(`${currentField.prompt}\nSelected: ${selectedValue}`);
         }
         
         // Move to next step
@@ -628,7 +799,7 @@ async function getChatbotResponse(userId, messageText, files = []) {
             if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
-                console.error(`❌ Python process error: ${error.message}`);
+                console.error(`Python process error: ${error.message}`);
                 console.error(`🐍 Command tried: ${pythonCommand}`);
                 console.error(`📂 Working directory: ${__dirname}`);
                 
@@ -691,15 +862,15 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Environment check function
 function checkEnvironment() {
-    const requiredEnvVars = ['TELEGRAM_BOT_TOKEN'];
+    const requiredEnvVars = ['TELEGRAM_BOT_TOKEN_1'];
     const missing = requiredEnvVars.filter(varName => !process.env[varName]);
     
     if (missing.length > 0) {
-        console.error(`❌ Missing required environment variables: ${missing.join(', ')}`);
+        console.error(`Missing required environment variables: ${missing.join(', ')}`);
         return false;
     }
     
-    console.log('✅ Required environment variables found');
+    console.log('Required environment variables found');
     console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🌐 Webhook URL: ${process.env.WEBHOOK_URL || 'Not set (will use polling)'}`);
     console.log(`🐍 Python check: ${process.env.PYTHON_PATH || 'Will auto-detect'}`);
@@ -724,7 +895,7 @@ process.on('SIGTERM', () => {
 async function startBot() {
     // Check environment first
     if (!checkEnvironment()) {
-        console.error('❌ Environment check failed. Exiting.');
+        console.error('Environment check failed. Exiting.');
         process.exit(1);
     }
     
@@ -770,7 +941,7 @@ async function startBot() {
             
             // Error handling middleware
             app.use((error, req, res, next) => {
-                console.error('❌ Webhook error:', error);
+                console.error('Webhook error:', error);
                 res.status(500).json({ error: 'Internal server error' });
             });
             
@@ -784,8 +955,15 @@ async function startBot() {
             // Development mode: Use polling with better error handling
             console.log('Starting bot in polling mode (development)...');
             
-            // Clear any existing webhook first
-            await bot.telegram.deleteWebhook();
+            // Try to clear any existing webhook first, but don't fail if it doesn't work
+            try {
+                console.log('Attempting to clear webhook...');
+                await bot.telegram.deleteWebhook();
+                console.log('Webhook cleared successfully');
+            } catch (webhookError) {
+                console.log('⚠️ Could not clear webhook (this is usually fine for polling mode):', webhookError.message);
+                // Continue anyway - polling can still work even if webhook clearing fails
+            }
             
             // Launch with polling
             await bot.launch({
@@ -799,6 +977,31 @@ async function startBot() {
         }
     } catch (error) {
         console.error('Error starting bot:', error);
+        
+        // Handle different types of network errors
+        if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+            console.error('Network connectivity issue detected:');
+            console.error('   - Cannot reach api.telegram.org');
+            console.error('   - Please check your internet connection');
+            console.error('   - Try using a VPN if Telegram is blocked in your region');
+            console.error('   - Make sure your firewall allows outbound connections');
+            
+            // Try to start in a basic mode
+            console.log('🔄 Attempting to start in basic polling mode...');
+            try {
+                await bot.launch({
+                    polling: {
+                        timeout: 5,
+                        limit: 10,
+                        allowedUpdates: ['message', 'callback_query']
+                    }
+                });
+                console.log('Bot started in basic mode despite network issues');
+                return;
+            } catch (basicError) {
+                console.error('Failed to start even in basic mode:', basicError.message);
+            }
+        }
         
         // If it's a 409 conflict error, try to resolve it
         if (error.response && error.response.error_code === 409) {
@@ -815,6 +1018,7 @@ async function startBot() {
             }
         }
         
+        console.error('Bot startup failed. Please check your configuration and try again.');
         process.exit(1);
     }
 }
