@@ -7,7 +7,7 @@ const path = require('path');
 
 require('dotenv').config();
 
-const token = process.env.TELEGRAM_BOT_TOKEN_1;
+const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
     console.error('TELEGRAM_BOT_TOKEN_1 is not set in environment variables. Exiting.');
     process.exit(1);
@@ -285,10 +285,7 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
     if (!session.termsAccepted || !session.disclaimerAccepted) {
         // If it's a greeting and user hasn't started the acceptance flow
         if (isGreeting(messageText) && session.currentStep === 'initial') {
-            // Send welcome message
-            await ctx.reply('Hi! I\'m PetAlly, AI Assistant 🐾 Your virtual pet assistant. I\'m here to help with your pet\'s health and behavior questions. Let\'s start by setting up your pet\'s profile.');
-            
-            // Start terms acceptance flow
+            // Start terms acceptance flow FIRST (no welcome message yet)
             session.currentStep = 'showing_terms';
             await showTermsWithButtons(ctx);
             return;
@@ -313,6 +310,9 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
 
     // Greeting and pet details collection flow (only after terms acceptance)
     if (isGreeting(messageText) && !session.greeted && session.termsAccepted && session.disclaimerAccepted) {
+        // Show welcome message AFTER terms acceptance
+        await ctx.reply('Hi! I\'m PetAlly, AI Assistant 🐾 Your virtual pet assistant. I\'m here to help with your pet\'s health and behavior questions. Let\'s start by setting up your pet\'s profile.');
+        
         session.greeted = true;
         session.petDetails = {};
         session.petDetailStep = 0;
@@ -337,7 +337,7 @@ bot.on(['text', 'photo', 'document', 'video', 'audio', 'voice', 'sticker'], asyn
         session.disclaimerAccepted = false;
         session.currentStep = 'initial';
         await ctx.reply('Starting fresh! Let\'s begin again.');
-        await ctx.reply('Hi! I\'m PetAlly, AI Assistant 🐾 Your virtual pet assistant. I\'m here to help with your pet\'s health and behavior questions. Let\'s start by setting up your pet\'s profile.');
+        // Start with terms acceptance (no welcome message)
         session.currentStep = 'showing_terms';
         await showTermsWithButtons(ctx);
         return;
@@ -572,7 +572,7 @@ bot.on('callback_query', async (ctx) => {
         if (data === 'terms_accept') {
             session.termsAccepted = true;
             await ctx.answerCbQuery('Terms accepted!');
-            await ctx.reply('Terms of Service accepted!');
+            await ctx.reply('✅ Terms of Service accepted!');
             
             // Now show disclaimer
             session.currentStep = 'showing_disclaimer';
@@ -582,7 +582,7 @@ bot.on('callback_query', async (ctx) => {
         
         if (data === 'terms_reject') {
             await ctx.answerCbQuery('Terms rejected');
-            await ctx.reply('You must accept the Terms of Service to use this bot. Say "hi" to start again.');
+            await ctx.reply('❌ You must accept the Terms of Service to use this bot. Say "hi" to start again.');
             // Reset session
             session.termsAccepted = false;
             session.disclaimerAccepted = false;
@@ -593,10 +593,12 @@ bot.on('callback_query', async (ctx) => {
         if (data === 'disclaimer_accept') {
             session.disclaimerAccepted = true;
             await ctx.answerCbQuery('Disclaimer accepted!');
-            await ctx.reply('Medical Disclaimer accepted!');
+            await ctx.reply('✅ Medical Disclaimer accepted!');
             
-            // Both terms and disclaimer accepted, start pet details collection
+            // Both terms and disclaimer accepted, NOW show welcome message
             if (session.termsAccepted && session.disclaimerAccepted) {
+                await ctx.reply('Hi! I\'m PetAlly, AI Assistant 🐾 Your virtual pet assistant. I\'m here to help with your pet\'s health and behavior questions. Let\'s start by setting up your pet\'s profile.');
+                
                 session.currentStep = 'pet_details';
                 session.greeted = true;
                 await ctx.reply('Great! Now let\'s collect some information about your pet.');
@@ -607,14 +609,14 @@ bot.on('callback_query', async (ctx) => {
         
         if (data === 'disclaimer_reject') {
             await ctx.answerCbQuery('Disclaimer rejected');
-            await ctx.reply('You must accept the Medical Disclaimer to use this bot. Say "hi" to start again.');
+            await ctx.reply('❌ You must accept the Medical Disclaimer to use this bot. Say "hi" to start again.');
             // Reset session
             session.termsAccepted = false;
             session.disclaimerAccepted = false;
             session.currentStep = 'initial';
             return;
         }
-    
+
         // Parse callback data for pet details (format: fieldKey_value)
         // Handle cases where fieldKey contains underscores (like pet_type, pet_gender)
         let fieldKey, selectedValue;
