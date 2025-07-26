@@ -864,7 +864,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Environment check function
 function checkEnvironment() {
-    const requiredEnvVars = ['TELEGRAM_BOT_TOKEN_1'];
+    const requiredEnvVars = ['TELEGRAM_BOT_TOKEN'];
     const missing = requiredEnvVars.filter(varName => !process.env[varName]);
     
     if (missing.length > 0) {
