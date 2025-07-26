@@ -1,0 +1,114 @@
+TERMS OF SERVICE
+
+1. ACCEPTANCE OF TERMS
+By using the AI Pet Assistance WhatsApp Bot ("the Service"), you acknowledge that you have read, understood, and agree to be bound by these Terms of Service and the Medical Disclaimer above. If you do not agree, discontinue use immediately.
+
+2. SERVICE DESCRIPTION
+    2.1 Nature of Service
+        The Service provides general pet care information through an AI-powered chatbot
+        Information is for educational and informational purposes only
+        The Service does not replace professional veterinary care, diagnosis, or treatment
+    2.2 Service Limitations
+        The AI system may provide inaccurate, incomplete, or outdated information
+        Technical errors, system downtime, or service interruptions may occur
+        The Service is not available 24/7 for emergencies
+
+3. USER RESPONSIBILITIES
+    3.1 Appropriate Use You agree to:
+        Use the Service only for lawful purposes
+        Provide accurate information about your pet when requested
+        Seek professional veterinary care when advised by the bot or when concerned about your pet's health
+        Do not rely solely on the Service for medical decisions
+    3.2 Prohibited Uses You may NOT:
+        Use the Service for emergency medical situations without also contacting professional veterinary care
+        Share the Service's responses as professional medical advice
+        Attempt to reverse engineer, hack, or disrupt the Service
+        Use the Service for commercial purposes without written permission
+
+4. PRIVACY AND DATA PROTECTION
+    4.1 Information Collection
+        We collect conversation data, pet information, and location data (when provided)
+        Data is used to improve service quality and provide location-based veterinarian recommendations
+        We do not sell personal information to third parties
+    4.2 Data Security
+        We implement reasonable security measures to protect your data
+        However, no system is 100% secure, and we cannot guarantee absolute security
+        You provide information at your own risk
+
+4.3 Data Retention
+    Conversation history may be retained for service improvement
+    You may request data deletion by contacting us
+    Some data may be retained for legal compliance purposes
+
+5. LIMITATION OF LIABILITY
+    5.1 No Warranties THE SERVICE IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO:
+        Accuracy, reliability, or completeness of information
+        Fitness for a particular purpose
+        Non-infringement of third-party rights
+        Uninterrupted or error-free operation
+    5.2 Limitation of Damages TO THE MAXIMUM EXTENT PERMITTED BY LAW:
+        We are NOT liable for any direct, indirect, incidental, special, or consequential damages
+        This includes but is not limited to: pet injury, illness, death, veterinary costs, emotional distress, or financial losses
+        Our total liability shall not exceed the amount you paid for the Service (which is currently $0 for free services)
+    5.3 Indemnification You agree to indemnify and hold harmless the Service, its owners, operators, and affiliates from any claims, damages, or expenses arising from:
+        Your use or misuse of the Service
+        Your violation of these Terms
+        Any harm to your pet resulting from reliance on the Service
+
+6. THIRD-PARTY SERVICES
+    6.1 Veterinarian Recommendations
+        Veterinarian suggestions are provided for convenience only
+        We do not endorse, guarantee, or assume responsibility for third-party veterinary services
+        You are responsible for verifying veterinarian credentials and choosing appropriate care
+    6.2 WhatsApp Platform
+        The Service operates through WhatsApp, which has its own terms and privacy policies
+        We are not responsible for WhatsApp's policies, security, or service availability
+
+7. INTELLECTUAL PROPERTY
+    7.1 Service Content
+        All content, software, and technology used in the Service are our property or licensed to us
+        You may not copy, reproduce, or distribute Service content without permission
+    7.2 User Content
+        You retain ownership of the information you provide
+        By using the Service, you grant us a license to use your data for service operation and improvement
+
+8. MODIFICATIONS AND TERMINATION
+    8.1 Service Changes
+        We may modify, suspend, or discontinue the Service at any time without notice
+        These Terms may be updated periodically
+        Continued use after changes constitutes acceptance of new terms
+    8.2 Termination
+        We may terminate your access for violation of these Terms
+        You may stop using the Service at any time
+        Termination does not affect previously incurred obligations
+
+9. GEOGRAPHIC LIMITATIONS
+    9.1 Jurisdiction
+        These Terms are governed by the laws of [Insert Your Jurisdiction]
+        Any disputes shall be resolved in the courts of [Insert Your Jurisdiction]
+    9.2 International Use
+        The Service may not be appropriate for use in all countries
+        Users are responsible for compliance with local laws and regulations
+
+10. SPECIFIC VETERINARY DISCLAIMERS
+    10.1 No Practice of Veterinary Medicine
+        The Service does not constitute the practice of veterinary medicine
+        No veterinary-client-patient relationship is established
+        The Service cannot and does not provide diagnoses, prescriptions, or treatment plans
+    10.2 Emergency Situations
+        The Service is NOT designed for emergency use
+        Always contact emergency veterinary services for urgent situations
+        Do not delay seeking professional care based on bot responses
+    10.3 Species and Breed Limitations
+        Information may not be applicable to all pet species or breeds
+        Exotic pets may require specialized veterinary care not covered by general advice
+        Always consult species-specific veterinary experts when needed
+
+11. ACKNOWLEDGMENT
+By using the AI Pet Assistance WhatsApp Bot, you acknowledge that:
+You understand this is not professional veterinary advice
+You will seek professional veterinary care when needed
+You use the Service at your own risk
+You accept full responsibility for decisions regarding your pet's care
+You have read and agree to these Terms and the Medical Disclaimer
+When in doubt, always choose professional veterinary care over bot advice.

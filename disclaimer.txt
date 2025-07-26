@@ -1,0 +1,15 @@
+⚠️ CRITICAL NOTICE: 
+
+This AI chatbot is NOT a licensed veterinarian and does NOT provide medical diagnosis, treatment, or professional veterinary advice.
+
+Medical Limitations
+ - This service provides GENERAL INFORMATION ONLY about pet care and should never replace professional veterinary consultation
+ - The AI responses are based on general knowledge and should NOT be considered medical advice
+ - NO doctor-patient relationship is established through use of this service
+ - The information provided is NOT intended to diagnose, treat, cure, or prevent any disease or medical condition
+ - ALWAYS consult a licensed veterinarian for proper diagnosis and treatment of your pet's health issues
+
+Emergency Situations:
+ - In case of MEDICAL EMERGENCIES, immediately contact your local veterinary emergency clinic or animal hospital
+ - DO NOT rely solely on this bot for emergencies
+ - The bot's emergency detection is a tool only - your judgment and professional veterinary care are essential
